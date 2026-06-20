@@ -1509,7 +1509,6 @@ class UserManagementPage(Page):
         self._search_sort_frame.pack(fill="x", pady=(0, 4))
         
         self._search_var = tk.StringVar()
-        self._search_var.trace_add("write", lambda *args: self._refresh_list())
         self._search_bar = SearchEntry(self._search_sort_frame, placeholder="Search users...", command=None, textvariable=self._search_var, entry_width=15)
         self._search_bar.pack(side="left", padx=(0, 10))
         
@@ -1552,6 +1551,9 @@ class UserManagementPage(Page):
 
         # Space key to capture
         self.bind_all("<space>", lambda e: self._capture_sample() if self._running else None)
+        
+        # Register search trace after tree is initialized to prevent early trigger error
+        self._search_var.trace_add("write", lambda *args: self._refresh_list())
         
         self.apply_theme()
 
