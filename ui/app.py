@@ -265,7 +265,7 @@ _DIST_MIN = 0.20   # too far below this
 _DIST_MAX = 0.65   # too close above this
 
 
-def _draw_distance_guide(bgr, locs):
+def _draw_distance_guide(bgr, locs, kids_mode=False):
     """
     Overlay distance guidance on *bgr* (in-place) based on detected face size.
     Returns (bgr, hint_str, color_bgr) so the UI status label can be updated.
@@ -278,9 +278,9 @@ def _draw_distance_guide(bgr, locs):
     cv2.ellipse(bgr, (cx, cy), (ow, oh), 0, 0, 360, (200, 200, 200), 2)
 
     if not locs:
-        cv2.putText(bgr, "No face detected", (10, 30),
+        cv2.putText(bgr, "No face detected" if not kids_mode else "Find your face! 😊", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.75, (80, 80, 255), 2)
-        return bgr, "No face detected — align your face with the oval", (80, 80, 255)
+        return bgr, "No face detected — align your face with the oval" if not kids_mode else "Put your happy face in the circle! 😊", (80, 80, 255)
 
     # Use the largest face
     top, right, bottom, left = max(locs, key=lambda l: (l[2]-l[0]) * (l[1]-l[3]))
@@ -290,25 +290,25 @@ def _draw_distance_guide(bgr, locs):
 
     # ── distance assessment ──
     if face_h < _DIST_MIN:
-        hint  = "Move CLOSER to the camera"
+        hint  = "Move CLOSER to the camera" if not kids_mode else "Come a little closer! 🚶‍♂️"
         color = (0, 80, 255)    # red-ish (BGR)
-        arrow = "▲▲  CLOSER"
+        arrow = "▲▲  CLOSER" if not kids_mode else "▲▲ CLOSER"
     elif face_h > _DIST_MAX:
-        hint  = "Move BACK from the camera"
+        hint  = "Move BACK from the camera" if not kids_mode else "Oops, step back a bit! 🏃‍♂️"
         color = (0, 180, 255)   # orange (BGR)
-        arrow = "▼▼  BACK"
+        arrow = "▼▼  BACK" if not kids_mode else "▼▼ BACK"
     else:
         # Good range — score within range for a finer bar
         ratio  = (face_h - _DIST_MIN) / (_DIST_MAX - _DIST_MIN)   # 0..1
         # Ideal is the middle 40–60 % of the range
         if 0.3 <= ratio <= 0.7:
-            hint  = "Perfect distance — hold still"
+            hint  = "Perfect distance — hold still" if not kids_mode else "Perfect distance! Stay still! 📸"
             color = (50, 200, 50)   # green
-            arrow = "✓  PERFECT"
+            arrow = "✓  PERFECT" if not kids_mode else "✓ CHEESE"
         else:
-            hint  = "Almost there — adjust slightly"
+            hint  = "Almost there — adjust slightly" if not kids_mode else "Almost there! Adjust slightly! 😊"
             color = (50, 200, 200)  # yellow-green
-            arrow = "~  ADJUST"
+            arrow = "~  ADJUST" if not kids_mode else "~ ADJUST"
 
     # ── face bounding box ──
     cv2.rectangle(bgr, (left, top), (right, bottom), color, 2)
@@ -651,6 +651,12 @@ class HomePage(Page):
                                      state=tk.DISABLED, command=self._stop_camera)
         self._cancel_btn.pack(side="right", padx=4)
 
+        self._kids_mode = False
+        self._kids_toggle_btn = tk.Button(top, text="🧒 Kids Mode: OFF", font=("Arial", 11, "bold"),
+                                          bg="#7f8c8d", fg="white", relief=tk.FLAT, padx=12,
+                                          command=self._toggle_kids_mode)
+        self._kids_toggle_btn.pack(side="right", padx=4)
+
         # ── status ──
         self._status = tk.Label(self, text="Press 'Start Scan' to check a product in or out.",
                                 font=("Arial", 11), fg="#555")
@@ -695,6 +701,17 @@ class HomePage(Page):
         sb.pack(side="right", fill="y")
         
         self._tree.bind("<Double-1>", self._show_user_details)
+
+    def _toggle_kids_mode(self):
+        self._kids_mode = not self._kids_mode
+        if self._kids_mode:
+            self._kids_toggle_btn.config(text="🧒 Kids Mode: ON", bg="#e67e22")
+            if not self._running:
+                self._status.config(text="Welcome! Press 'Start Scan' to scan your item! 🎒", font=("Arial", 12, "bold"), fg="#2980b9")
+        else:
+            self._kids_toggle_btn.config(text="🧒 Kids Mode: OFF", bg="#7f8c8d")
+            if not self._running:
+                self._status.config(text="Press 'Start Scan' to check a product in or out.", font=("Arial", 11), fg="#555")
 
     def _show_user_details(self, event):
         sel = self._tree.selection()
@@ -780,15 +797,26 @@ class HomePage(Page):
             qr_ratio = max(qr_w / w, qr_h / h)
 
             # Distance hint based on QR size
-            if qr_ratio < 0.12:
-                hint, color = "Move CLOSER to the QR code", (0, 80, 255)
-                arrow = "▲▲  CLOSER"
-            elif qr_ratio > 0.75:
-                hint, color = "Move BACK from the QR code", (0, 180, 255)
-                arrow = "▼▼  BACK"
+            if self._kids_mode:
+                if qr_ratio < 0.12:
+                    hint, color = "Come a little closer! 🚶‍♂️", (0, 80, 255)
+                    arrow = "▲▲ CLOSER"
+                elif qr_ratio > 0.75:
+                    hint, color = "Oops, step back a bit! 🏃‍♂️", (0, 180, 255)
+                    arrow = "▼▼ BACK"
+                else:
+                    hint, color = "Stay still... Say cheese! 🧀", (50, 200, 50)
+                    arrow = "✓ SMILE"
             else:
-                hint, color = "Hold steady…", (50, 200, 50)
-                arrow = "✓  GOOD"
+                if qr_ratio < 0.12:
+                    hint, color = "Move CLOSER to the QR code", (0, 80, 255)
+                    arrow = "▲▲  CLOSER"
+                elif qr_ratio > 0.75:
+                    hint, color = "Move BACK from the QR code", (0, 180, 255)
+                    arrow = "▼▼  BACK"
+                else:
+                    hint, color = "Hold steady…", (50, 200, 50)
+                    arrow = "✓  GOOD"
 
             cv2.polylines(bgr, [pts], True, color, 2)
             (tw, _), _ = cv2.getTextSize(arrow, cv2.FONT_HERSHEY_SIMPLEX, 0.75, 2)
@@ -823,7 +851,7 @@ class HomePage(Page):
             for i in range(0, h // 3, 20):
                 cv2.line(bgr, (cx - w//6, cy - h//6 + i), (cx - w//6, cy - h//6 + i + 10), (150, 150, 150), 1)
                 cv2.line(bgr, (cx + w//6, cy - h//6 + i), (cx + w//6, cy - h//6 + i + 10), (150, 150, 150), 1)
-            msg = "Point QR code at the box"
+            msg = "Put your card inside the box 🎒" if self._kids_mode else "Point QR code at the box"
             (mw, _), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
             cv2.rectangle(bgr, (8, 8), (mw + 20, 38), (0, 0, 0), -1)
             cv2.putText(bgr, msg, (12, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 2)
@@ -836,7 +864,10 @@ class HomePage(Page):
         self._face_results = []
         self._start_btn.config(state=tk.DISABLED)
         self._cancel_btn.config(state=tk.NORMAL)
-        self._status.config(text="Point the QR code at the camera…", fg="#2980b9")
+        if self._kids_mode:
+            self._status.config(text="🎒 Show your QR code card to the camera! 📷", fg="#e67e22", font=("Arial", 12, "bold"))
+        else:
+            self._status.config(text="Point the QR code at the camera…", fg="#2980b9", font=("Arial", 11))
         # Start one long-lived camera thread; we'll swap the process fn for face mode
         self._cam_thread = _CameraThread(_active_camera_index, self._qr_process, process_every=2)
         self._cam_thread.start()
@@ -878,11 +909,11 @@ class HomePage(Page):
         bgr = np.where(mask[:, :, None] == 255, bgr, blurred_bgr)
 
         locs  = faces_to_locations(faces)
-        bgr, hint, _ = _draw_distance_guide(bgr, locs)
+        bgr, hint, _ = _draw_distance_guide(bgr, locs, kids_mode=self._kids_mode)
         result = None
 
         if not faces and bounds_violated:
-            hint = "Center your full face strictly inside the oval"
+            hint = "Put your happy face in the circle! 😊" if self._kids_mode else "Center your full face strictly inside the oval"
             (tw, th), _ = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.70, 2)
             cv2.rectangle(bgr, (8, 8), (tw + 20, 45), (0, 0, 0), -1)
             cv2.putText(bgr, hint, (12, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (0, 165, 255), 2)
@@ -896,7 +927,7 @@ class HomePage(Page):
                     continue
                 
                 if not check_liveness(bgr, face.bbox):
-                    result = (None, None, "⚠ Liveness check failed (Suspected Spoof)", 0)
+                    result = (None, None, "⚠ Use your real face! No photos! 🤖" if self._kids_mode else "⚠ Liveness check failed (Suspected Spoof)", 0)
                     break
 
                 enc   = get_face_embedding(face)
@@ -937,7 +968,10 @@ class HomePage(Page):
         self._face_results = []
         self._unknown_face_count = 0
         self._face_start = time.time()
-        self._status.config(text=f"QR: {self._product_id}  —  Look at the camera…", fg="#27ae60")
+        if self._kids_mode:
+            self._status.config(text="😊 Look at the camera and smile! Smile! 🧀", fg="#27ae60", font=("Arial", 12, "bold"))
+        else:
+            self._status.config(text=f"QR: {self._product_id}  —  Look at the camera…", fg="#27ae60", font=("Arial", 11))
         # Load known encodings ONCE here — not per frame
         self._known_cache = get_known_encodings(db_file=self._db)
         # Swap processing function — camera stays open, no device close/reopen
@@ -973,20 +1007,31 @@ class HomePage(Page):
                 
                 # Update status with distance hint
                 if hint:
-                    self._status.config(text=hint,
-                                        fg="#27ae60" if "Perfect" in hint else
-                                           "#c0392b" if "Liveness" in hint else
-                                           "#e67e22" if "BACK" in hint or "CLOSER" in hint else "#2980b9")
+                    if self._kids_mode:
+                        self._status.config(text=hint, font=("Arial", 12, "bold"),
+                                            fg="#27ae60" if "Cheese" in hint or "Perfect" in hint or "cheese" in hint else
+                                               "#c0392b" if "real" in hint or "Real" in hint or "Suspected" in hint else
+                                               "#e67e22" if "back" in hint or "closer" in hint or "BACK" in hint or "CLOSER" in hint else "#2980b9")
+                    else:
+                        self._status.config(text=hint, font=("Arial", 11),
+                                            fg="#27ae60" if "Perfect" in hint else
+                                               "#c0392b" if "Liveness" in hint else
+                                               "#e67e22" if "BACK" in hint or "CLOSER" in hint else "#2980b9")
                 if uid:
                     self._unknown_face_count = 0
                     self._face_results.append((uid, uname))
                     votes = len(self._face_results)
-                    self._status.config(
-                        text=f"Recognising {uname} — confidence {conf}%  ({votes}/{self._VOTES_NEEDED} votes)",
-                        fg="#27ae60")
+                    if self._kids_mode:
+                        self._status.config(
+                            text=f"😊 Hi {uname}! Smile while we check you in... ({votes}/{self._VOTES_NEEDED})",
+                            fg="#27ae60", font=("Arial", 12, "bold"))
+                    else:
+                        self._status.config(
+                            text=f"Recognising {uname} — confidence {conf}%  ({votes}/{self._VOTES_NEEDED} votes)",
+                            fg="#27ae60", font=("Arial", 11))
                 else:
                     # Face in range but no match
-                    if hint and "Perfect" in hint:
+                    if hint and ("Perfect" in hint or "cheese" in hint or "Cheese" in hint):
                         self._unknown_face_count += 1
                         if self._unknown_face_count >= 12:
                             self._stop_camera()
@@ -1037,16 +1082,19 @@ class HomePage(Page):
                     self._status.config(text=f"✅  Checked IN: {pname}", fg="#27ae60")
                     text_to_speech(f"Checked in: {pname}")
                     self._refresh_history()
-                    self._start_btn.config(state=tk.NORMAL)
-                    self._cancel_btn.config(state=tk.DISABLED)
-                    messagebox.showinfo(
-                        "✅  Check-In Successful",
-                        f"Product returned successfully!\n\n"
-                        f"  Product : {pname}\n"
-                        f"  ID      : {pid}\n"
-                        f"  User    : {user_name}\n"
-                        f"  School  : {school_name}\n"
-                        f"  Time    : {now_display}")
+                    if self._kids_mode:
+                        self._show_kids_success_popup(True, pname, user_name, school_name, now_display)
+                    else:
+                        self._start_btn.config(state=tk.NORMAL)
+                        self._cancel_btn.config(state=tk.DISABLED)
+                        messagebox.showinfo(
+                            "✅  Check-In Successful",
+                            f"Product returned successfully!\n\n"
+                            f"  Product : {pname}\n"
+                            f"  ID      : {pid}\n"
+                            f"  User    : {user_name}\n"
+                            f"  School  : {school_name}\n"
+                            f"  Time    : {now_display}")
                     return
                 else:
                     # Check if the user has more than 2 unreturned products
@@ -1080,16 +1128,19 @@ class HomePage(Page):
                     self._status.config(text=f"✅  Checked OUT: {pname} by {user_name}", fg="#2980b9")
                     text_to_speech(f"Checked out: {pname}")
                     self._refresh_history()
-                    self._start_btn.config(state=tk.NORMAL)
-                    self._cancel_btn.config(state=tk.DISABLED)
-                    messagebox.showinfo(
-                        "✅  Check-Out Successful",
-                        f"Product borrowed successfully!\n\n"
-                        f"  Product : {pname}\n"
-                        f"  ID      : {pid}\n"
-                        f"  User    : {user_name}\n"
-                        f"  School  : {school_name}\n"
-                        f"  Time    : {now_display}")
+                    if self._kids_mode:
+                        self._show_kids_success_popup(False, pname, user_name, school_name, now_display)
+                    else:
+                        self._start_btn.config(state=tk.NORMAL)
+                        self._cancel_btn.config(state=tk.DISABLED)
+                        messagebox.showinfo(
+                            "✅  Check-Out Successful",
+                            f"Product borrowed successfully!\n\n"
+                            f"  Product : {pname}\n"
+                            f"  ID      : {pid}\n"
+                            f"  User    : {user_name}\n"
+                            f"  School  : {school_name}\n"
+                            f"  Time    : {now_display}")
                     return
         except sqlite3.Error as e:
             self._status.config(text=f"DB error: {e}", fg="red")
@@ -1102,6 +1153,9 @@ class HomePage(Page):
 
     def _show_unregistered_popup(self):
         """Alert shown when a face is detected but not found in the database."""
+        if self._kids_mode:
+            self._show_kids_unregistered_popup()
+            return
         text_to_speech("User not registered. Please contact the administrator.")
         self._status.config(text="⚠  Unrecognised user.", fg="red")
 
@@ -1169,6 +1223,11 @@ class HomePage(Page):
         self._cancel_btn.config(state=tk.DISABLED)
         if msg:
             self._status.config(text=msg, fg="red")
+        else:
+            if getattr(self, "_kids_mode", False):
+                self._status.config(text="Welcome! Press 'Start Scan' to scan your item! 🎒", fg="#2980b9", font=("Arial", 12, "bold"))
+            else:
+                self._status.config(text="Press 'Start Scan' to check a product in or out.", fg="#555", font=("Arial", 11))
 
     def _check_overdue(self):
         if hasattr(self, '_overdue_timer'):
@@ -1282,6 +1341,9 @@ class HomePage(Page):
 
     def _show_user_overdue_block_popup(self, user_name, unreturned_items):
         """Open a beautiful block popup when a user has >2 unreturned items and attempts to borrow."""
+        if self._kids_mode:
+            self._show_kids_overdue_block_popup(user_name, unreturned_items)
+            return
         text_to_speech("Scan blocked. Please return your borrowed products first.")
         self._status.config(text=f"⚠ Scan blocked for {user_name}: return borrowed products.", fg="red")
 
@@ -1328,6 +1390,204 @@ class HomePage(Page):
         tree.heading("time", text="Borrowed Time")
         tree.column("pid", width=80, anchor="center")
         tree.column("pname", width=180, anchor="w")
+
+    def _show_kids_success_popup(self, is_checkin, pname, user_name, school_name, time_str):
+        dlg = tk.Toplevel(self)
+        dlg.title("Scan Successful!")
+        dlg.geometry("450x300")
+        dlg.transient(self.winfo_toplevel())
+        
+        # Pastel background color: soft green for return, soft blue for borrow
+        bg_color = "#e8f8f5" if is_checkin else "#ebf5fb"
+        fg_color = "#1abc9c" if is_checkin else "#2980b9"
+        dlg.configure(bg=bg_color)
+        
+        # Center the dialog on the screen relative to app
+        dlg.update_idletasks()
+        w = dlg.winfo_width()
+        h = dlg.winfo_height()
+        extra_x = (self.winfo_width() - w) // 2
+        extra_y = (self.winfo_height() - h) // 2
+        x = self.winfo_rootx() + extra_x
+        y = self.winfo_rooty() + extra_y
+        dlg.geometry(f"{w}x{h}+{x}+{y}")
+        
+        try:
+            dlg.wait_visibility()
+            dlg.grab_set()
+        except tk.TclError:
+            pass
+        dlg.lift()
+        dlg.resizable(False, False)
+        
+        # Main layout frame
+        frame = tk.Frame(dlg, bg=bg_color, padx=20, pady=20)
+        frame.pack(fill="both", expand=True)
+        
+        # Big icon/emoji
+        emoji = "🎉  📚  🎉" if is_checkin else "🎒  🚀  🎒"
+        emoji_lbl = tk.Label(frame, text=emoji, font=("Arial", 28), bg=bg_color)
+        emoji_lbl.pack(pady=(10, 5))
+        
+        # Big message
+        title_text = "Returned Successfully! 👍" if is_checkin else "Borrowed Successfully! 🌟"
+        title_lbl = tk.Label(frame, text=title_text, font=("Arial Rounded MT Bold", 16, "bold"), fg=fg_color, bg=bg_color)
+        title_lbl.pack(pady=5)
+        
+        # Encouraging text
+        if is_checkin:
+            msg_text = f"Thank you, {user_name}!\nYou have returned:\n'{pname}'"
+        else:
+            msg_text = f"Have fun, {user_name}!\nYou checked out:\n'{pname}'"
+            
+        msg_lbl = tk.Label(frame, text=msg_text, font=("Arial", 12, "bold"), fg="#34495e", bg=bg_color, justify="center")
+        msg_lbl.pack(pady=10)
+        
+        # Auto-close countdown indicator
+        timer_lbl = tk.Label(frame, text="Closing automatically in 4s...", font=("Arial", 10, "italic"), fg="#7f8c8d", bg=bg_color)
+        timer_lbl.pack(pady=(10, 0))
+        
+        # Auto-close logic
+        countdown = [4]
+        def update_timer():
+            countdown[0] -= 1
+            if countdown[0] > 0:
+                timer_lbl.config(text=f"Closing automatically in {countdown[0]}s...")
+                dlg.after(1000, update_timer)
+            else:
+                _close_dialog()
+                
+        def _close_dialog():
+            try:
+                dlg.destroy()
+            except Exception:
+                pass
+            # Automatically re-enable scan so the next kid can scan without user interaction
+            self._start_btn.config(state=tk.NORMAL)
+            self._cancel_btn.config(state=tk.DISABLED)
+            
+        # Got it button
+        btn_bg = "#2ecc71" if is_checkin else "#3498db"
+        btn = tk.Button(frame, text="Got it! 👍", font=("Arial", 11, "bold"), bg=btn_bg, fg="white", 
+                        relief=tk.FLAT, padx=20, pady=5, command=_close_dialog)
+        btn.pack(pady=(10, 0))
+        
+        # Start countdown
+        dlg.after(1000, update_timer)
+
+    def _show_kids_unregistered_popup(self):
+        text_to_speech("Oops! Face not recognized. Please ask a teacher to sign you up.")
+        self._status.config(text="⚠  Unrecognized face.", fg="red")
+
+        dlg = tk.Toplevel(self)
+        dlg.title("Unregistered User")
+        dlg.geometry("450x300")
+        dlg.configure(bg="#fef9e7")
+        dlg.transient(self.winfo_toplevel())
+        
+        # Center the dialog
+        dlg.update_idletasks()
+        w = dlg.winfo_width()
+        h = dlg.winfo_height()
+        extra_x = (self.winfo_width() - w) // 2
+        extra_y = (self.winfo_height() - h) // 2
+        x = self.winfo_rootx() + extra_x
+        y = self.winfo_rooty() + extra_y
+        dlg.geometry(f"{w}x{h}+{x}+{y}")
+        
+        try:
+            dlg.wait_visibility()
+            dlg.grab_set()
+        except tk.TclError:
+            pass
+        dlg.lift()
+        dlg.resizable(False, False)
+
+        frame = tk.Frame(dlg, bg="#fef9e7", padx=20, pady=20)
+        frame.pack(fill="both", expand=True)
+
+        tk.Label(frame, text="🤖  🤔  🤖", font=("Arial", 28), bg="#fef9e7").pack(pady=(10, 5))
+        tk.Label(frame, text="Oops! Face Not Recognized", font=("Arial Rounded MT Bold", 15, "bold"), fg="#d35400", bg="#fef9e7").pack(pady=5)
+        
+        msg = "We couldn't find your face in the system.\nPlease ask a teacher or administrator to sign you up! 👩‍🏫"
+        tk.Label(frame, text=msg, font=("Arial", 11, "bold"), fg="#34495e", bg="#fef9e7", justify="center").pack(pady=10)
+
+        bf = tk.Frame(frame, bg="#fef9e7")
+        bf.pack(pady=10)
+
+        def _retry():
+            dlg.destroy()
+            self._start_btn.config(state=tk.NORMAL)
+            self._cancel_btn.config(state=tk.DISABLED)
+            self.after(200, self._start_qr)
+
+        tk.Button(bf, text="🔄  Try Again", bg="#e67e22", fg="white",
+                  font=("Arial", 11, "bold"), relief=tk.FLAT, padx=15, pady=5,
+                  command=_retry).pack(side="left", padx=10)
+        tk.Button(bf, text="✖  Cancel", bg="#7f8c8d", fg="white",
+                  font=("Arial", 11, "bold"), relief=tk.FLAT, padx=15, pady=5,
+                  command=lambda: (dlg.destroy(),
+                                   self._start_btn.config(state=tk.NORMAL),
+                                   self._cancel_btn.config(state=tk.DISABLED))
+                  ).pack(side="left", padx=10)
+
+    def _show_kids_overdue_block_popup(self, user_name, unreturned_items):
+        text_to_speech("Oops! Please return your borrowed items first.")
+        self._status.config(text=f"⚠ Return borrowed items first, {user_name}.", fg="red")
+
+        dlg = tk.Toplevel(self)
+        dlg.title("Let's Return Items First!")
+        dlg.geometry("500x380")
+        dlg.configure(bg="#fdf2e9")
+        dlg.transient(self.winfo_toplevel())
+        
+        # Center the dialog
+        dlg.update_idletasks()
+        w = dlg.winfo_width()
+        h = dlg.winfo_height()
+        extra_x = (self.winfo_width() - w) // 2
+        extra_y = (self.winfo_height() - h) // 2
+        x = self.winfo_rootx() + extra_x
+        y = self.winfo_rooty() + extra_y
+        dlg.geometry(f"{w}x{h}+{x}+{y}")
+        
+        try:
+            dlg.wait_visibility()
+            dlg.grab_set()
+        except tk.TclError:
+            pass
+        dlg.lift()
+        dlg.resizable(False, False)
+
+        frame = tk.Frame(dlg, bg="#fdf2e9", padx=20, pady=20)
+        frame.pack(fill="both", expand=True)
+
+        tk.Label(frame, text="🎒  📚  🎒", font=("Arial", 28), bg="#fdf2e9").pack(pady=(5, 5))
+        tk.Label(frame, text=f"Time to Return, {user_name}! 😊", font=("Arial Rounded MT Bold", 15, "bold"), fg="#d35400", bg="#fdf2e9").pack(pady=5)
+        
+        msg = f"You have borrowed {len(unreturned_items)} items!\nPlease return them to the shelf before borrowing more items. 👍"
+        tk.Label(frame, text=msg, font=("Arial", 11, "bold"), fg="#34495e", bg="#fdf2e9", justify="center").pack(pady=5)
+
+        # Simple list of items (just labels since it's for kids)
+        list_frame = tk.LabelFrame(frame, text="Your Borrowed Items", font=("Arial", 10, "bold"), bg="#fdf2e9", fg="#d35400", padx=10, pady=5)
+        list_frame.pack(fill="both", expand=True, pady=10)
+
+        # Show up to 3 items as labels, if more show count
+        for i, item in enumerate(unreturned_items[:3]):
+            pname = item[1]
+            time_borrowed = item[2].split(" ")[0] if len(item) > 2 else ""
+            tk.Label(list_frame, text=f"• {pname} (Borrowed: {time_borrowed})", font=("Arial", 10, "bold"), bg="#fdf2e9", fg="#2c3e50", anchor="w").pack(fill="x", pady=2)
+        if len(unreturned_items) > 3:
+            tk.Label(list_frame, text=f"• And {len(unreturned_items) - 3} more items...", font=("Arial", 10, "italic", "bold"), bg="#fdf2e9", fg="#7f8c8d", anchor="w").pack(fill="x", pady=2)
+
+        def _close():
+            dlg.destroy()
+            self._start_btn.config(state=tk.NORMAL)
+            self._cancel_btn.config(state=tk.DISABLED)
+
+        tk.Button(frame, text="Okay, let's return them! 👍", bg="#e67e22", fg="white",
+                  font=("Arial", 11, "bold"), relief=tk.FLAT, padx=20, pady=5,
+                  command=_close).pack(pady=(5, 5))
         tree.column("time", width=160, anchor="center")
 
         sb = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
