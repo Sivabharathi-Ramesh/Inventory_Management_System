@@ -5,3 +5,15 @@
 2026-06-20 16:31:17.939766: User meenatchi (ID 104) has 2 unreturned items. Attempting to borrow Rubik's Cube (5x5)_2 (slof_268).
 2026-06-20 16:31:42.040662: User meenatchi (ID 104) has 3 unreturned items. Attempting to borrow Flowers (The Mother)_1 (slof_307).
 2026-06-20 16:31:42.042168: BLOCKED user meenatchi (ID 104) from borrowing Flowers (The Mother)_1 (slof_307).
+2026-06-20 16:56:26.586788: User Sivabharathi (ID 164) has 55 unreturned items. Attempting to borrow Rubik's Cube (5x5)_2 (slof_268).
+2026-06-20 16:56:26.587338: BLOCKED user Sivabharathi (ID 164) from borrowing Rubik's Cube (5x5)_2 (slof_268).
+2026-06-20 16:57:20.092658: User Sivabharathi (ID 164) has 55 unreturned items. Attempting to borrow Rubik's Cube (5x5)_2 (slof_268).
+2026-06-20 16:57:20.092792: BLOCKED user Sivabharathi (ID 164) from borrowing Rubik's Cube (5x5)_2 (slof_268).
+2026-06-20 16:57:46.193791: User meenatchi (ID 104) has 2 unreturned items. Attempting to borrow PYRAMINX_1 (Puzzle) (slof_266).
+2026-06-20 16:58:39.298322: User meenatchi (ID 104) has 3 unreturned items. Attempting to borrow Ganit rack _big2_1 (slof_251).
+2026-06-20 16:58:39.298472: BLOCKED user meenatchi (ID 104) from borrowing Ganit rack _big2_1 (slof_251).
+2026-06-20 17:00:09.298054: User Rithikranjan (ID 195) has 0 unreturned items. Attempting to borrow Wooden_Blocks (Big_1) (slof_206).
+2026-06-20 17:08:02.246295: User Sivabharathi (ID 164) has 54 unreturned items. Attempting to borrow At Right Angles (Azim Premji University)_7 (slof_291).
+2026-06-20 17:08:02.246497: BLOCKED user Sivabharathi (ID 164) from borrowing At Right Angles (Azim Premji University)_7 (slof_291).
+2026-06-20 17:08:42.782445: User Tranai (ID 175) has 0 unreturned items. Attempting to borrow At Right Angles (Azim Premji University)_7 (slof_291).
+2026-06-20 17:09:19.693761: User Dharshan (ID 111) has 0 unreturned items. Attempting to borrow At Right Angles (Azim Premji University)_7 (slof_291).
