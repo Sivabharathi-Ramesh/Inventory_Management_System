@@ -66,7 +66,8 @@ pip install \
     Pillow==12.2.0 \
     pyzbar==0.1.9 \
     pyttsx3 \
-    pyaudio
+    pyaudio \
+    qrcode
 
 echo "  Python packages installed."
 

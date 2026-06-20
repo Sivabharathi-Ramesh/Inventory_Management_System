@@ -115,6 +115,7 @@ pip install Pillow==12.2.0
 pip install pyzbar==0.1.9
 pip install pyttsx3
 pip install pywin32
+pip install qrcode
 
 echo   Python packages installed.
 
