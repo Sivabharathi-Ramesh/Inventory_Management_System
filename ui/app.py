@@ -331,6 +331,185 @@ def _draw_distance_guide(bgr, locs):
 
     return bgr, hint, color
 
+# ─── Custom Search Widget ───────────────────────────────────────────────────
+
+class SearchEntry(tk.Frame):
+    """
+    A professional, modern search entry with an integrated magnifying glass icon,
+    placeholder text, and a clear button (✕) that appears dynamically.
+    """
+    def __init__(self, parent, placeholder="Search...", command=None, textvariable=None, entry_width=20, **kwargs):
+        super().__init__(parent, **kwargs)
+        self.placeholder = placeholder
+        self.command = command
+        
+        self.var = textvariable if textvariable is not None else tk.StringVar()
+        self._internal_var = tk.StringVar()
+        self._updating = False
+        
+        self.border_frame = tk.Frame(self)
+        self.border_frame.pack(fill="both", expand=True)
+        
+        self.inner_frame = tk.Frame(self.border_frame)
+        self.inner_frame.pack(fill="both", expand=True, padx=1, pady=1)
+        
+        self.icon_label = tk.Label(self.inner_frame, text="🔍", font=("Arial", 10))
+        self.icon_label.pack(side="left", padx=(6, 2))
+        
+        self.entry = tk.Entry(self.inner_frame, textvariable=self._internal_var, relief=tk.FLAT, bd=0, font=("Arial", 10), width=entry_width)
+        self.entry.pack(side="left", fill="both", expand=True, padx=4, pady=3)
+        
+        self.clear_btn = tk.Label(self.inner_frame, text="✕", font=("Arial", 9, "bold"), cursor="hand2")
+        self.clear_btn.bind("<Button-1>", lambda e: self.clear())
+        
+        self.entry.bind("<FocusIn>", self._on_focus_in)
+        self.entry.bind("<FocusOut>", self._on_focus_out)
+        
+        if self.command:
+            self.entry.bind("<Return>", lambda e: self.command())
+            self.icon_label.bind("<Button-1>", lambda e: self.command())
+            
+        self.showing_placeholder = False
+        
+        self._trace_internal_id = self._internal_var.trace_add("write", self._on_internal_write)
+        self._trace_external_id = self.var.trace_add("write", self._on_external_write)
+        
+        val = self.var.get()
+        if val:
+            self._internal_var.set(val)
+        else:
+            self._show_placeholder()
+            
+        self.apply_theme()
+
+    def _show_placeholder(self):
+        self.showing_placeholder = True
+        self._internal_var.set(self.placeholder)
+        t = get_theme()
+        is_dark = (t.get("content_bg", "#ffffff") in ("#020617", "#0f172a"))
+        placeholder_color = "#64748b" if is_dark else "#94a3b8"
+        self.entry.config(fg=placeholder_color)
+        self.clear_btn.pack_forget()
+
+    def _hide_placeholder(self):
+        self.showing_placeholder = False
+        self._internal_var.set("")
+        t = get_theme()
+        text_color = t.get("header_fg", "#000000")
+        self.entry.config(fg=text_color)
+
+    def _on_focus_in(self, event):
+        self.border_frame.config(bg=self.border_focus)
+        if self.showing_placeholder:
+            self._hide_placeholder()
+
+    def _on_focus_out(self, event):
+        self.border_frame.config(bg=self.border_normal)
+        if not self._internal_var.get().strip():
+            self._show_placeholder()
+
+    def _on_internal_write(self, *args):
+        if self._updating:
+            return
+        self._updating = True
+        try:
+            val = self._internal_var.get()
+            if self.showing_placeholder:
+                self.var.set("")
+            else:
+                self.var.set(val)
+                if val.strip():
+                    self.clear_btn.pack(side="right", padx=(2, 6))
+                else:
+                    self.clear_btn.pack_forget()
+        finally:
+            self._updating = False
+
+    def _on_external_write(self, *args):
+        if self._updating:
+            return
+        self._updating = True
+        try:
+            val = self.var.get()
+            if not val:
+                if self.focus_get() != self.entry:
+                    self._show_placeholder()
+                else:
+                    self._internal_var.set("")
+                    self.showing_placeholder = False
+                    self.clear_btn.pack_forget()
+            else:
+                self.showing_placeholder = False
+                self._internal_var.set(val)
+                t = get_theme()
+                text_color = t.get("header_fg", "#000000")
+                self.entry.config(fg=text_color)
+                self.clear_btn.pack(side="right", padx=(2, 6))
+        finally:
+            self._updating = False
+
+    def get(self):
+        if self.showing_placeholder:
+            return ""
+        return self._internal_var.get()
+
+    def set(self, val):
+        self.var.set(val)
+
+    def clear(self, trigger_command=True):
+        self.var.set("")
+        if not trigger_command:
+            orig_command = self.command
+            self.command = None
+            try:
+                if self.focus_get() != self.entry:
+                    self._show_placeholder()
+                else:
+                    self._internal_var.set("")
+                    self.showing_placeholder = False
+                    self.clear_btn.pack_forget()
+            finally:
+                self.command = orig_command
+        else:
+            if self.focus_get() != self.entry:
+                self._show_placeholder()
+            else:
+                self._internal_var.set("")
+                self.showing_placeholder = False
+                self.clear_btn.pack_forget()
+            if self.command:
+                self.command()
+
+    def apply_theme(self):
+        t = get_theme()
+        is_dark = (t.get("content_bg", "#ffffff") in ("#020617", "#0f172a"))
+        
+        self.config(bg=t["content_bg"])
+        self.bg_color = "#0f172a" if is_dark else "#ffffff"
+        self.text_color = t.get("header_fg", "#000000")
+        
+        self.border_normal = "#334155" if is_dark else "#cbd5e1"
+        self.border_focus = t.get("btn_primary", "#3b82f6")
+        
+        self.icon_color = "#94a3b8" if is_dark else "#64748b"
+        self.clear_color = "#64748b" if is_dark else "#94a3b8"
+        self.clear_hover_color = "#ef4444"
+        
+        self.border_frame.config(bg=self.border_normal)
+        self.inner_frame.config(bg=self.bg_color)
+        self.icon_label.config(bg=self.bg_color, fg=self.icon_color)
+        self.entry.config(bg=self.bg_color, insertbackground=self.text_color)
+        self.clear_btn.config(bg=self.bg_color, fg=self.clear_color)
+        
+        if self.showing_placeholder:
+            placeholder_color = "#64748b" if is_dark else "#94a3b8"
+            self.entry.config(fg=placeholder_color)
+        else:
+            self.entry.config(fg=self.text_color)
+            
+        self.clear_btn.bind("<Enter>", lambda e: self.clear_btn.config(fg=self.clear_hover_color))
+        self.clear_btn.bind("<Leave>", lambda e: self.clear_btn.config(fg=self.clear_color))
+
 
 # ─── Base page ───────────────────────────────────────────────────────────────
 
@@ -1080,34 +1259,42 @@ class AdminHistoryPage(Page):
         self._db = db_file
 
         # ── toolbar ──
-        bar = tk.Frame(self, pady=8)
-        bar.pack(fill="x", padx=12)
-        tk.Label(bar, text="History", font=("Arial", 15, "bold")).pack(side="left")
+        self._bar = tk.Frame(self, pady=8)
+        self._bar.pack(fill="x", padx=12)
+        self._title_lbl = tk.Label(self._bar, text="History", font=("Arial", 15, "bold"))
+        self._title_lbl.pack(side="left")
 
-        tk.Button(bar, text="🔄 Refresh", bg="#3498db", fg="white", relief=tk.FLAT,
-                  command=self._refresh).pack(side="right", padx=4)
+        self._refresh_btn = tk.Button(self._bar, text="🔄 Refresh", relief=tk.FLAT,
+                                      command=self._refresh)
+        self._refresh_btn.pack(side="right", padx=4)
         self._search_var = tk.StringVar()
-        se = tk.Entry(bar, textvariable=self._search_var, width=22, font=("Arial", 10))
-        se.pack(side="right", padx=4)
-        se.bind("<Return>", lambda e: self._do_search())
-        tk.Button(bar, text="🔍 Search", bg="#3498db", fg="white", relief=tk.FLAT,
-                  command=self._do_search).pack(side="right", padx=4)
+        self._search_bar = SearchEntry(self._bar, placeholder="Search history...", command=self._do_search, textvariable=self._search_var, entry_width=22)
+        self._search_bar.pack(side="right", padx=4)
 
         # ── tree ──
-        tf = tk.Frame(self)
-        tf.pack(fill="both", expand=True, padx=12, pady=6)
+        self._tf = tk.Frame(self)
+        self._tf.pack(fill="both", expand=True, padx=12, pady=6)
         cols = ("Product ID", "Product Name", "Check Out", "Check In", "User ID", "User Name")
-        self._tree = ttk.Treeview(tf, columns=cols, show="headings")
+        self._tree = ttk.Treeview(self._tf, columns=cols, show="headings")
         widths = [90, 170, 150, 150, 80, 150]
         for col, w in zip(cols, widths):
             self._tree.heading(col, text=col)
             self._tree.column(col, anchor="center", width=w)
-        sb = ttk.Scrollbar(tf, orient="vertical", command=self._tree.yview)
+        sb = ttk.Scrollbar(self._tf, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=sb.set)
         self._tree.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
         
         self._tree.bind("<Double-1>", self._show_user_details)
+
+    def apply_theme(self):
+        t = get_theme()
+        self._bar.config(bg=t["content_bg"])
+        self._title_lbl.config(bg=t["content_bg"], fg=t["header_fg"])
+        self._refresh_btn.config(bg=t["btn_secondary"], fg=t["btn_secondary_fg"],
+                                 activebackground=t["btn_secondary"], activeforeground=t["btn_secondary_fg"])
+        self._tf.config(bg=t["content_bg"])
+        self._search_bar.apply_theme()
 
     def _show_user_details(self, event):
         sel = self._tree.selection()
@@ -1174,12 +1361,13 @@ class AdminHistoryPage(Page):
         self._refresh()
 
     def _refresh(self):
+        self._search_bar.clear(trigger_command=False)
         show_items_admin(self._tree, db_file=self._db)
 
     def _do_search(self):
-        term = self._search_var.get().strip()
+        term = self._search_bar.get().strip()
         if not term:
-            self._refresh()
+            show_items_admin(self._tree, db_file=self._db)
             return
         try:
             with sqlite3.connect(self._db) as conn:
@@ -1234,28 +1422,34 @@ class UserManagementPage(Page):
         self._SAMPLE_TARGET = SAMPLE_TARGET
 
         # ── layout: left = add-user, right = user list ──
-        pane = tk.PanedWindow(self, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
-        pane.pack(fill="both", expand=True, padx=8, pady=8)
+        self._pane = tk.PanedWindow(self, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
+        self._pane.pack(fill="both", expand=True, padx=8, pady=8)
 
         # ── left panel ──
-        left = tk.Frame(pane, padx=10)
-        pane.add(left, minsize=660)
+        self._left_panel = tk.Frame(self._pane, padx=10)
+        self._pane.add(self._left_panel, minsize=660)
 
-        tk.Label(left, text="Add User", font=("Arial", 14, "bold")).pack(pady=(10, 4))
+        self._add_user_title = tk.Label(self._left_panel, text="Add User", font=("Arial", 14, "bold"))
+        self._add_user_title.pack(pady=(10, 4))
 
         # ---- form fields ----
-        form = tk.Frame(left)
-        form.pack(fill="x", pady=2)
+        self._form_frame = tk.Frame(self._left_panel)
+        self._form_frame.pack(fill="x", pady=2)
         
+        self._form_labels = []
+        self._form_entries = []
         for r, (lbl, attr) in enumerate([
             ("Name:",   "_name_var"),
             ("School:", "_school_var"),
             ("Place:",  "_place_var"),
         ]):
-            tk.Label(form, text=lbl, width=8, anchor="e").grid(row=r, column=0, pady=3, padx=4)
+            lbl_widget = tk.Label(self._form_frame, text=lbl, width=8, anchor="e")
+            lbl_widget.grid(row=r, column=0, pady=3, padx=4)
+            self._form_labels.append(lbl_widget)
             var = tk.StringVar()
             setattr(self, attr, var)
-            ent = tk.Entry(form, textvariable=var, width=28, font=("Arial", 11))
+            ent = tk.Entry(self._form_frame, textvariable=var, width=28, font=("Arial", 11))
+            self._form_entries.append(ent)
             
             ent.grid(row=r, column=1, pady=3, padx=4, sticky="w")
             if attr == "_name_var":
@@ -1263,73 +1457,75 @@ class UserManagementPage(Page):
                 ent.bind("<Return>", lambda e: self._start_camera())
 
         # ── Step 2: Start Camera button — placed immediately below the form ──
-        self._start_btn = tk.Button(left, text="📷  Start Face Capture",
-                                    bg="#1abc9c", fg="white",
+        self._start_btn = tk.Button(self._left_panel, text="📷  Start Face Capture",
                                     relief=tk.FLAT, font=("Arial", 13, "bold"),
                                     padx=14, pady=8, command=self._start_camera)
         self._start_btn.pack(fill="x", padx=4, pady=(6, 2))
 
         # camera preview (hidden until camera starts)
-        self._cam_label = tk.Label(left, bg="#1a1a2e", width=PREVIEW_W, height=PREVIEW_H)
+        self._cam_label = tk.Label(self._left_panel, bg="#1a1a2e", width=PREVIEW_W, height=PREVIEW_H)
         self._cam_label.pack(pady=4)
 
-        self._status = tk.Label(left, text="Fill in Name, School, Place — then press 'Start Face Capture'.",
-                                 font=("Arial", 10), fg="#555", wraplength=380)
+        self._status = tk.Label(self._left_panel, text="Fill in Name, School, Place — then press 'Start Face Capture'.",
+                                 font=("Arial", 10), wraplength=380)
         self._status.pack(pady=2)
 
         # progress bar for samples
-        self._progress = ttk.Progressbar(left, maximum=SAMPLE_TARGET, length=360)
+        self._progress = ttk.Progressbar(self._left_panel, maximum=SAMPLE_TARGET, length=360)
         self._progress.pack(pady=4)
 
         # Capture / Cancel row (active only while camera is running)
-        bf = tk.Frame(left)
-        bf.pack(pady=2)
-        self._capture_btn = tk.Button(bf, text="📸  Capture Sample", bg="#3498db", fg="white",
+        self._btn_frame = tk.Frame(self._left_panel)
+        self._btn_frame.pack(pady=2)
+        self._capture_btn = tk.Button(self._btn_frame, text="📸  Capture Sample",
                                       relief=tk.FLAT, font=("Arial", 11), padx=10,
                                       state=tk.DISABLED, command=self._capture_sample)
         self._capture_btn.pack(side="left", padx=4)
-        self._cancel_btn = tk.Button(bf, text="✖  Cancel", bg="#e74c3c", fg="white",
+        self._cancel_btn = tk.Button(self._btn_frame, text="✖  Cancel",
                                      relief=tk.FLAT, font=("Arial", 11), padx=10,
                                      state=tk.DISABLED, command=self._stop_camera)
         self._cancel_btn.pack(side="left", padx=4)
 
         # Register button — enabled only after all samples captured
-        self._register_btn = tk.Button(left, text="✅  Register User", bg="#2c3e50", fg="white",
+        self._register_btn = tk.Button(self._left_panel, text="✅  Register User",
                                        relief=tk.FLAT, font=("Arial", 12, "bold"), padx=14, pady=6,
                                        state=tk.DISABLED, command=self._save_user)
         self._register_btn.pack(fill="x", padx=4, pady=(4, 8))
 
         # ── right panel ──
-        right = tk.Frame(pane, padx=6)
-        pane.add(right, minsize=360)
+        self._right_panel = tk.Frame(self._pane, padx=6)
+        self._pane.add(self._right_panel, minsize=360)
 
-        hdr = tk.Frame(right)
-        hdr.pack(fill="x", pady=(10, 2))
-        tk.Label(hdr, text="User List", font=("Arial", 14, "bold")).pack(side="left")
-        tk.Button(hdr, text="🔄", bg="#3498db", fg="white", relief=tk.FLAT, width=3,
-                  command=self._refresh_list).pack(side="right")
+        self._hdr_frame = tk.Frame(self._right_panel)
+        self._hdr_frame.pack(fill="x", pady=(10, 2))
+        self._user_list_title = tk.Label(self._hdr_frame, text="User List", font=("Arial", 14, "bold"))
+        self._user_list_title.pack(side="left")
+        self._refresh_btn = tk.Button(self._hdr_frame, text="🔄", relief=tk.FLAT, width=3,
+                                      command=self._refresh_list)
+        self._refresh_btn.pack(side="right")
 
         # ── search and sort ──
-        sf = tk.Frame(right)
-        sf.pack(fill="x", pady=(0, 4))
+        self._search_sort_frame = tk.Frame(self._right_panel)
+        self._search_sort_frame.pack(fill="x", pady=(0, 4))
         
-        tk.Label(sf, text="Search:").pack(side="left")
         self._search_var = tk.StringVar()
         self._search_var.trace_add("write", lambda *args: self._refresh_list())
-        tk.Entry(sf, textvariable=self._search_var, width=15).pack(side="left", padx=(2, 10))
+        self._search_bar = SearchEntry(self._search_sort_frame, placeholder="Search users...", command=None, textvariable=self._search_var, entry_width=15)
+        self._search_bar.pack(side="left", padx=(0, 10))
         
-        tk.Label(sf, text="Sort by:").pack(side="left")
+        self._sort_label = tk.Label(self._search_sort_frame, text="Sort by:")
+        self._sort_label.pack(side="left")
         self._sort_var = tk.StringVar(value="ID (Desc)")
-        sort_cb = ttk.Combobox(sf, textvariable=self._sort_var, 
+        self._sort_cb = ttk.Combobox(self._search_sort_frame, textvariable=self._sort_var, 
                                values=["ID (Desc)", "ID (Asc)", "Name (A-Z)", "School (A-Z)"], 
                                state="readonly", width=12)
-        sort_cb.pack(side="left", padx=2)
-        sort_cb.bind("<<ComboboxSelected>>", lambda e: self._refresh_list())
+        self._sort_cb.pack(side="left", padx=2)
+        self._sort_cb.bind("<<ComboboxSelected>>", lambda e: self._refresh_list())
 
-        self._count_label = tk.Label(sf, text="", font=("Arial", 9), fg="#7f8c8d")
+        self._count_label = tk.Label(self._search_sort_frame, text="", font=("Arial", 9))
         self._count_label.pack(side="right")
 
-        tf = tk.Frame(right)
+        tf = tk.Frame(self._right_panel)
         tf.pack(fill="both", expand=True)
         cols = ("ID", "Name", "School", "Place", "Type")
         widths = (50, 130, 120, 90, 60)
@@ -1342,17 +1538,70 @@ class UserManagementPage(Page):
         self._tree.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
 
-        rbf = tk.Frame(right)
-        rbf.pack(pady=6)
-        tk.Button(rbf, text="✏  Edit", bg="#27ae60", fg="white", relief=tk.FLAT,
-                  command=self._edit_user).pack(side="left", padx=4)
-        tk.Button(rbf, text="📋  Bulk Rename", bg="#8e44ad", fg="white", relief=tk.FLAT,
-                  command=self._bulk_rename).pack(side="left", padx=4)
-        tk.Button(rbf, text="🗑  Remove", bg="#e74c3c", fg="white", relief=tk.FLAT,
-                  command=self._remove_user).pack(side="left", padx=4)
+        self._edit_remove_frame = tk.Frame(self._right_panel)
+        self._edit_remove_frame.pack(pady=6)
+        self._edit_btn = tk.Button(self._edit_remove_frame, text="✏  Edit", relief=tk.FLAT,
+                                   command=self._edit_user)
+        self._edit_btn.pack(side="left", padx=4)
+        self._bulk_btn = tk.Button(self._edit_remove_frame, text="📋  Bulk Rename", relief=tk.FLAT,
+                                   command=self._bulk_rename)
+        self._bulk_btn.pack(side="left", padx=4)
+        self._remove_btn = tk.Button(self._edit_remove_frame, text="🗑  Remove", relief=tk.FLAT,
+                                     command=self._remove_user)
+        self._remove_btn.pack(side="left", padx=4)
 
         # Space key to capture
         self.bind_all("<space>", lambda e: self._capture_sample() if self._running else None)
+        
+        self.apply_theme()
+
+    def apply_theme(self):
+        t = get_theme()
+        is_dark = (t.get("content_bg", "#ffffff") in ("#020617", "#0f172a"))
+        
+        self.config(bg=t["content_bg"])
+        self._pane.config(bg=t["content_bg"])
+        self._left_panel.config(bg=t["content_bg"])
+        self._form_frame.config(bg=t["content_bg"])
+        self._right_panel.config(bg=t["content_bg"])
+        self._hdr_frame.config(bg=t["content_bg"])
+        self._search_sort_frame.config(bg=t["content_bg"])
+        self._btn_frame.config(bg=t["content_bg"])
+        self._edit_remove_frame.config(bg=t["content_bg"])
+        
+        self._add_user_title.config(bg=t["content_bg"], fg=t["header_fg"])
+        self._user_list_title.config(bg=t["content_bg"], fg=t["header_fg"])
+        self._status.config(bg=t["content_bg"], fg=t["logo_sub_fg"] if is_dark else "#555")
+        self._sort_label.config(bg=t["content_bg"], fg=t["header_fg"])
+        self._count_label.config(bg=t["content_bg"], fg=t["logo_sub_fg"] if is_dark else "#7f8c8d")
+        
+        for lbl in self._form_labels:
+            lbl.config(bg=t["content_bg"], fg=t["header_fg"])
+            
+        for ent in self._form_entries:
+            ent.config(bg="#0f172a" if is_dark else "#ffffff", fg=t["header_fg"], 
+                       insertbackground=t["header_fg"])
+                       
+        self._refresh_btn.config(bg=t["btn_secondary"], fg=t["btn_secondary_fg"],
+                                 activebackground=t["btn_secondary"], activeforeground=t["btn_secondary_fg"])
+                                 
+        self._start_btn.config(bg=t["btn_primary"], fg=t["btn_primary_fg"],
+                               activebackground=t["btn_primary"], activeforeground=t["btn_primary_fg"])
+        self._capture_btn.config(bg=t["btn_primary"], fg=t["btn_primary_fg"],
+                                 activebackground=t["btn_primary"], activeforeground=t["btn_primary_fg"])
+        self._cancel_btn.config(bg=t["btn_danger"], fg="#ffffff",
+                                activebackground=t["btn_danger"], activeforeground="#ffffff")
+        self._register_btn.config(bg=t["btn_secondary"], fg=t["btn_secondary_fg"],
+                                  activebackground=t["btn_secondary"], activeforeground=t["btn_secondary_fg"])
+                                  
+        self._edit_btn.config(bg=t.get("status_ok", "#27ae60"), fg="#ffffff",
+                              activebackground=t.get("status_ok", "#27ae60"), activeforeground="#ffffff")
+        self._bulk_btn.config(bg=t.get("btn_warning", "#8e44ad"), fg=t.get("btn_warning_fg", "#ffffff"),
+                              activebackground=t.get("btn_warning", "#8e44ad"), activeforeground=t.get("btn_warning_fg", "#ffffff"))
+        self._remove_btn.config(bg=t.get("btn_danger", "#e74c3c"), fg="#ffffff",
+                                activebackground=t.get("btn_danger"), activeforeground="#ffffff")
+                                
+        self._search_bar.apply_theme()
 
     def on_show(self):
         self._refresh_list()
@@ -2070,32 +2319,34 @@ class ProductManagerPage(Page):
         self._db = db_file
         self._checked_items = {}
 
-        frame = tk.Frame(self, padx=16, pady=10)
-        frame.pack(fill="both", expand=True)
+        self._frame = tk.Frame(self, padx=16, pady=10)
+        self._frame.pack(fill="both", expand=True)
 
-        tk.Label(frame, text="Product Manager", font=("Arial", 15, "bold")).pack(pady=(0, 8))
+        self._title_lbl = tk.Label(self._frame, text="Product Manager", font=("Arial", 15, "bold"))
+        self._title_lbl.pack(pady=(0, 8))
 
         # entry + buttons row
-        ef = tk.Frame(frame)
-        ef.pack(fill="x")
-        self._entry = tk.Entry(ef, width=30, font=("Arial", 11))
+        self._ef = tk.Frame(self._frame)
+        self._ef.pack(fill="x")
+        self._entry = tk.Entry(self._ef, width=30, font=("Arial", 11))
         self._entry.pack(side="left", padx=(0, 8))
         self._entry.bind("<Return>", lambda e: self._add_item())
-        tk.Button(ef, text="➕ Add", bg="#1abc9c", fg="white", relief=tk.FLAT,
-                  command=self._add_item).pack(side="left", padx=4)
+        self._add_btn = tk.Button(self._ef, text="➕ Add", relief=tk.FLAT,
+                                  command=self._add_item)
+        self._add_btn.pack(side="left", padx=4)
 
         # search row
-        sf = tk.Frame(frame)
-        sf.pack(fill="x", pady=6)
+        self._sf = tk.Frame(self._frame)
+        self._sf.pack(fill="x", pady=6)
         self._search_var = tk.StringVar()
-        se = tk.Entry(sf, textvariable=self._search_var, width=24, font=("Arial", 10))
-        se.pack(side="left")
-        se.bind("<Return>", lambda e: self._search())
-        tk.Button(sf, text="🔍", command=self._search).pack(side="left", padx=4)
-        tk.Button(sf, text="🔄", command=self._refresh).pack(side="left")
+        self._search_bar = SearchEntry(self._sf, placeholder="Search products...", command=self._search, textvariable=self._search_var, entry_width=24)
+        self._search_bar.pack(side="left")
+        
+        self._refresh_btn = tk.Button(self._sf, text="🔄", command=self._refresh, relief=tk.FLAT)
+        self._refresh_btn.pack(side="left", padx=4)
 
         # tree
-        tf = tk.Frame(frame)
+        tf = tk.Frame(self._frame)
         tf.pack(fill="both", expand=True)
         self._tree = ttk.Treeview(tf, columns=("Select", "Product ID", "Product Name"), show="headings")
         self._tree.tag_configure("checked", background="#d5f5e3")
@@ -2114,8 +2365,8 @@ class ProductManagerPage(Page):
         self._tree.bind("<Button-1>", self._on_tree_click)
 
         # QR row
-        qf = tk.Frame(frame)
-        qf.pack(pady=8)
+        self._qf = tk.Frame(self._frame)
+        self._qf.pack(pady=8)
         import math, qrcode as _qrcode
         from PIL import ImageFont, ImageDraw
         self._qrcode = _qrcode
@@ -2123,22 +2374,51 @@ class ProductManagerPage(Page):
         self._ImageFont = ImageFont
         self._ImageDraw = ImageDraw
 
-        self._size_cb = ttk.Combobox(qf, values=["20", "25", "30"], state="readonly", width=8)
+        self._size_cb = ttk.Combobox(self._qf, values=["20", "25", "30"], state="readonly", width=8)
         self._size_cb.set("25")
         self._size_cb.pack(side="left", padx=6)
-        tk.Button(qf, text="📄 Generate QR", bg="#9b59b6", fg="white", relief=tk.FLAT,
-                  command=self._generate_qr).pack(side="left", padx=6)
+        self._gen_qr_btn = tk.Button(self._qf, text="📄 Generate QR", relief=tk.FLAT,
+                                     command=self._generate_qr)
+        self._gen_qr_btn.pack(side="left", padx=6)
 
-        self._bulk_print_btn = tk.Button(qf, text="📑 Bulk Print Listed", bg="#2980b9", fg="white", relief=tk.FLAT,
+        self._bulk_print_btn = tk.Button(self._qf, text="📑 Bulk Print Listed", relief=tk.FLAT,
                                          command=self._generate_bulk_qr)
         self._bulk_print_btn.pack(side="left", padx=6)
 
-        self._status = tk.Label(frame, text="", font=("Arial", 10))
+        self._status = tk.Label(self._frame, text="", font=("Arial", 10))
         self._status.pack()
 
         self._conn = sqlite3.connect(db_file)
         self._cursor = self._conn.cursor()
         self._refresh()
+
+        self.apply_theme()
+
+    def apply_theme(self):
+        t = get_theme()
+        is_dark = (t.get("content_bg", "#ffffff") in ("#020617", "#0f172a"))
+        
+        self.config(bg=t["content_bg"])
+        self._frame.config(bg=t["content_bg"])
+        self._title_lbl.config(bg=t["content_bg"], fg=t["header_fg"])
+        self._ef.config(bg=t["content_bg"])
+        self._sf.config(bg=t["content_bg"])
+        self._qf.config(bg=t["content_bg"])
+        
+        self._entry.config(bg="#0f172a" if is_dark else "#ffffff", fg=t["header_fg"],
+                           insertbackground=t["header_fg"])
+                           
+        self._add_btn.config(bg=t["btn_primary"], fg=t["btn_primary_fg"],
+                             activebackground=t["btn_primary"], activeforeground=t["btn_primary_fg"])
+        self._refresh_btn.config(bg=t["btn_secondary"], fg=t["btn_secondary_fg"],
+                                 activebackground=t["btn_secondary"], activeforeground=t["btn_secondary_fg"])
+        self._gen_qr_btn.config(bg=t["btn_primary"], fg=t["btn_primary_fg"],
+                                activebackground=t["btn_primary"], activeforeground=t["btn_primary_fg"])
+        self._bulk_print_btn.config(bg=t["btn_secondary"], fg=t["btn_secondary_fg"],
+                                    activebackground=t["btn_secondary"], activeforeground=t["btn_secondary_fg"])
+                                    
+        self._status.config(bg=t["content_bg"], fg=t["logo_sub_fg"] if is_dark else "#555")
+        self._search_bar.apply_theme()
 
     def on_show(self):
         self._refresh()
@@ -2156,11 +2436,11 @@ class ProductManagerPage(Page):
         self._refresh()
 
     def _refresh(self):
-        self._search_var.set("")
+        self._search_bar.clear(trigger_command=False)
         self._load_items()
 
     def _search(self):
-        term = self._search_var.get().strip()
+        term = self._search_bar.get().strip()
         self._load_items(term)
 
     def _load_items(self, term=None):
