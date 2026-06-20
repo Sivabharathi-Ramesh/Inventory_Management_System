@@ -75,3 +75,38 @@ def hash_password(password):
         str: The hashed password.
     """
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def is_created_at_update_required(created_at):
+    """
+    Check if a registration date string requires an annual profile/photo update.
+    Returns True if more than one year has passed since registration, otherwise False.
+    """
+    if not created_at:
+        return False
+    from datetime import datetime
+    try:
+        if " " in created_at:
+            reg_date = datetime.strptime(created_at.split()[0], "%Y-%m-%d").date()
+        else:
+            reg_date = datetime.strptime(created_at, "%Y-%m-%d").date()
+            
+        try:
+            anniversary = reg_date.replace(year=reg_date.year + 1)
+        except ValueError:
+            anniversary = reg_date.replace(year=reg_date.year + 1, day=28)
+            
+        return datetime.now().date() >= anniversary
+    except Exception:
+        return False
+
+
+def is_user_update_required(user_id, db_file='DB_FILE'):
+    """
+    Check if a user requires an annual profile/photo update.
+    Returns True if more than one year has passed since registration, otherwise False.
+    """
+    result = execute_query("SELECT created_at FROM users WHERE user_id = ?", (user_id,), fetch=True, db_file=db_file)
+    if not result or not result[0][0]:
+        return False
+    return is_created_at_update_required(result[0][0])

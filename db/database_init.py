@@ -25,15 +25,22 @@ def initialize_database(db_file='DB_FILE'):
             face_encoding BLOB,
             type TEXT DEFAULT 'User',
             school TEXT DEFAULT '',
-            place TEXT DEFAULT ''
+            place TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now', 'localtime'))
         )
         """)
-        # Migration: add school/place columns if they don't exist yet (existing DBs)
-        for col in ("school TEXT DEFAULT ''", "place TEXT DEFAULT ''"):
+        # Migration: add columns if they don't exist yet (existing DBs)
+        for col in ("school TEXT DEFAULT ''", "place TEXT DEFAULT ''", "created_at TEXT DEFAULT (datetime('now', 'localtime'))"):
             try:
                 cursor.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except sqlite3.OperationalError:
                 pass
+
+        # Set default created_at date for legacy users that were updated
+        try:
+            cursor.execute("UPDATE users SET created_at = datetime('now', 'localtime') WHERE created_at IS NULL")
+        except sqlite3.OperationalError:
+            pass
 
         # Create face_encodings table for multiple patterns per user
         cursor.execute("""

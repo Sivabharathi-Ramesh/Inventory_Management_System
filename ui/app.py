@@ -20,10 +20,11 @@ from utils.face_recognition_utils import (
     VERIFY_THRESHOLD, ENROLL_THRESHOLD, check_liveness,
 )
 
-from db import initialize_database, execute_query, fetch_user_data, update_user_type, remove_user, hash_password
+from db import initialize_database, execute_query, fetch_user_data, update_user_type, remove_user, hash_password, is_user_update_required, is_created_at_update_required
 from utils import resource_path, text_to_speech, setup_placeholder
 from utils import load_known_encodings as get_known_encodings
 from utils import find_matching_face
+
 from core import show_items, show_items_admin, search_product
 
 warnings.filterwarnings("ignore")
@@ -859,6 +860,8 @@ class HomePage(Page):
         return bgr, None
 
     def _start_qr(self):
+        if str(self._start_btn['state']) == tk.DISABLED or str(self._start_btn['state']) == 'disabled':
+            return
         self._running = True
         self._mode = "qr"
         self._face_results = []
@@ -1053,10 +1056,27 @@ class HomePage(Page):
     # ── Check-in / check-out DB logic ──
 
     def _do_checkinout(self, user_id, user_name):
+        if is_user_update_required(user_id, self._db):
+            self._stop_camera()
+            self._status.config(
+                text="Your registration has expired. Please contact the administrator to update your profile.",
+                fg="red",
+                font=("Arial", 11, "bold")
+            )
+            self._start_btn.config(state=tk.DISABLED)
+            self._cancel_btn.config(state=tk.DISABLED)
+            text_to_speech("Your registration has expired. Please contact the administrator to update your profile.")
+            return
+
         pid = self._product_id
         now_db = time.strftime("%Y-%m-%d %H:%M:%S")
         now_display = time.strftime("%d-%m-%Y %I:%M:%S %p")
         try:
+            success = False
+            is_checkin = False
+            pname = ""
+            school_name = ""
+            unreturned_items = []
             with sqlite3.connect(self._db) as conn:
                 c = conn.cursor()
                 
@@ -1075,27 +1095,11 @@ class HomePage(Page):
                 c.execute("SELECT * FROM product_history WHERE product_id=? AND check_in_time IS NULL", (pid,))
                 open_rec = c.fetchone()
                 if open_rec:
-                    checkout_time = open_rec[5] if len(open_rec) > 5 else "—"
                     c.execute("UPDATE product_history SET check_in_time=? WHERE product_id=? AND check_in_time IS NULL",
-                              (now_db, pid))
+                               (now_db, pid))
                     conn.commit()
-                    self._status.config(text=f"✅  Checked IN: {pname}", fg="#27ae60")
-                    text_to_speech(f"Checked in: {pname}")
-                    self._refresh_history()
-                    if self._kids_mode:
-                        self._show_kids_success_popup(True, pname, user_name, school_name, now_display)
-                    else:
-                        self._start_btn.config(state=tk.NORMAL)
-                        self._cancel_btn.config(state=tk.DISABLED)
-                        messagebox.showinfo(
-                            "✅  Check-In Successful",
-                            f"Product returned successfully!\n\n"
-                            f"  Product : {pname}\n"
-                            f"  ID      : {pid}\n"
-                            f"  User    : {user_name}\n"
-                            f"  School  : {school_name}\n"
-                            f"  Time    : {now_display}")
-                    return
+                    success = True
+                    is_checkin = True
                 else:
                     # Check if the user has more than 2 unreturned products
                     c.execute("""
@@ -1125,29 +1129,39 @@ class HomePage(Page):
                                  (product_id, product_name, user_id, user_name, check_out_time, check_in_time)
                                  VALUES (?,?,?,?,?,NULL)""", (pid, pname, user_id, user_name, now_db))
                     conn.commit()
-                    self._status.config(text=f"✅  Checked OUT: {pname} by {user_name}", fg="#2980b9")
-                    text_to_speech(f"Checked out: {pname}")
-                    self._refresh_history()
-                    if self._kids_mode:
-                        self._show_kids_success_popup(False, pname, user_name, school_name, now_display)
-                    else:
-                        self._start_btn.config(state=tk.NORMAL)
-                        self._cancel_btn.config(state=tk.DISABLED)
-                        messagebox.showinfo(
-                            "✅  Check-Out Successful",
-                            f"Product borrowed successfully!\n\n"
-                            f"  Product : {pname}\n"
-                            f"  ID      : {pid}\n"
-                            f"  User    : {user_name}\n"
-                            f"  School  : {school_name}\n"
-                            f"  Time    : {now_display}")
-                    return
+                    success = True
+                    is_checkin = False
         except sqlite3.Error as e:
             self._status.config(text=f"DB error: {e}", fg="red")
             messagebox.showerror("Database Error", f"Could not complete operation:\n\n{e}")
-        self._refresh_history()
-        self._start_btn.config(state=tk.NORMAL)
-        self._cancel_btn.config(state=tk.DISABLED)
+            self._refresh_history()
+            self._start_btn.config(state=tk.NORMAL)
+            self._cancel_btn.config(state=tk.DISABLED)
+            return
+
+        if success:
+            if is_checkin:
+                self._status.config(text=f"✅  Checked IN: {pname}", fg="#27ae60")
+                text_to_speech(f"Checked in: {pname}")
+            else:
+                self._status.config(text=f"✅  Checked OUT: {pname} by {user_name}", fg="#2980b9")
+                text_to_speech(f"Checked out: {pname}")
+            
+            self._refresh_history()
+            
+            if self._kids_mode:
+                self._show_kids_success_popup(is_checkin, pname, user_name, school_name, now_display)
+            else:
+                self._start_btn.config(state=tk.NORMAL)
+                self._cancel_btn.config(state=tk.DISABLED)
+                msg_title = "✅  Check-In Successful" if is_checkin else "✅  Check-Out Successful"
+                msg_body = f"Product {'returned' if is_checkin else 'borrowed'} successfully!\n\n" \
+                           f"  Product : {pname}\n" \
+                           f"  ID      : {pid}\n" \
+                           f"  User    : {user_name}\n" \
+                           f"  School  : {school_name}\n" \
+                           f"  Time    : {now_display}"
+                messagebox.showinfo(msg_title, msg_body)
 
     # ── helpers ──
 
@@ -1388,8 +1402,34 @@ class HomePage(Page):
         tree.heading("pid", text="Product ID")
         tree.heading("pname", text="Product Name")
         tree.heading("time", text="Borrowed Time")
-        tree.column("pid", width=80, anchor="center")
-        tree.column("pname", width=180, anchor="w")
+        tree.column("pid", width=90, anchor="center")
+        tree.column("pname", width=220, anchor="w")
+        tree.column("time", width=140, anchor="center")
+        
+        # Populate items in treeview
+        for item in unreturned_items:
+            pid_val = item[0]
+            pname_val = item[1]
+            cout_val = item[2] if len(item) > 2 else ""
+            try:
+                cout_dt = datetime.strptime(cout_val, "%Y-%m-%d %H:%M:%S")
+                cout_str = cout_dt.strftime("%d-%m-%Y %I:%M %p")
+            except Exception:
+                cout_str = cout_val
+            tree.insert("", "end", values=(pid_val, pname_val, cout_str))
+            
+        tree.pack(side="left", fill="both", expand=True)
+        
+        # Scrollbar for treeview
+        sb = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        
+        # OK Button to close the dialog
+        btn = tk.Button(main_frame, text="OK", font=("Arial", 12, "bold"),
+                        bg="#2980b9", fg="white", relief=tk.FLAT, width=15, pady=8,
+                        command=dlg.destroy)
+        btn.pack(pady=(12, 0))
 
     def _show_kids_success_popup(self, is_checkin, pname, user_name, school_name, time_str):
         dlg = tk.Toplevel(self)
@@ -1831,6 +1871,8 @@ class UserManagementPage(Page):
         self._db = db_file
         self._cam_thread = None
         self._running = False
+        self._updating_user_id = None
+        self._updating_dlg = None
         self._captured = []
         self._face_detected = False
         self._cur_faces = []
@@ -1922,9 +1964,32 @@ class UserManagementPage(Page):
         self._hdr_frame.pack(fill="x", pady=(10, 2))
         self._user_list_title = tk.Label(self._hdr_frame, text="User List", font=("Arial", 14, "bold"))
         self._user_list_title.pack(side="left")
+        
+        self._expired_users = []
+        self._notif_visible = False
+        
+        self._notif_btn = tk.Button(self._hdr_frame, text="🔔 User Update Notifications (0)",
+                                    relief=tk.FLAT, font=("Arial", 10, "bold"), cursor="hand2",
+                                    command=self._toggle_notif_panel)
+        self._notif_btn.pack(side="left", padx=15)
+        
         self._refresh_btn = tk.Button(self._hdr_frame, text="🔄", relief=tk.FLAT, width=3,
                                       command=self._refresh_list)
         self._refresh_btn.pack(side="right")
+
+        # Collapsible notification panel
+        self._notif_panel = tk.Frame(self._right_panel, bd=1, relief=tk.SOLID, padx=6, pady=6)
+        self._notif_hdr_label = tk.Label(self._notif_panel, text="User ID | User Name", font=("Arial", 10, "bold"))
+        self._notif_hdr_label.pack(anchor="w", padx=2, pady=(0, 2))
+        
+        cols_notif = ("id", "name")
+        self._notif_tree = ttk.Treeview(self._notif_panel, columns=cols_notif, show="headings", height=4)
+        self._notif_tree.heading("id", text="User ID")
+        self._notif_tree.heading("name", text="User Name")
+        self._notif_tree.column("id", width=70, anchor="center")
+        self._notif_tree.column("name", width=180, anchor="w")
+        self._notif_tree.pack(fill="x", expand=True)
+        self._notif_tree.bind("<<TreeviewSelect>>", self._on_notif_user_click)
 
         # ── search and sort ──
         self._search_sort_frame = tk.Frame(self._right_panel)
@@ -1946,15 +2011,15 @@ class UserManagementPage(Page):
         self._count_label = tk.Label(self._search_sort_frame, text="", font=("Arial", 9))
         self._count_label.pack(side="right")
 
-        tf = tk.Frame(self._right_panel)
-        tf.pack(fill="both", expand=True)
+        self._tree_frame = tk.Frame(self._right_panel)
+        self._tree_frame.pack(fill="both", expand=True)
         cols = ("ID", "Name", "School", "Place", "Type")
         widths = (50, 130, 120, 90, 60)
-        self._tree = ttk.Treeview(tf, columns=cols, show="headings", height=14)
+        self._tree = ttk.Treeview(self._tree_frame, columns=cols, show="headings", height=14)
         for col, w in zip(cols, widths):
             self._tree.heading(col, text=col)
             self._tree.column(col, anchor="center", width=w)
-        sb = ttk.Scrollbar(tf, orient="vertical", command=self._tree.yview)
+        sb = ttk.Scrollbar(self._tree_frame, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=sb.set)
         self._tree.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
@@ -2026,6 +2091,26 @@ class UserManagementPage(Page):
                                 activebackground=t.get("btn_danger"), activeforeground="#ffffff")
                                 
         self._search_bar.apply_theme()
+        
+        # Notification widgets theme configuration
+        self._notif_btn.config(bg=t["content_bg"])
+        if hasattr(self, "_expired_users") and len(self._expired_users) > 0:
+            self._notif_btn.config(fg=t.get("status_err", "red"))
+        else:
+            self._notif_btn.config(fg=t["logo_sub_fg"])
+            
+        panel_bg = "#1e293b" if is_dark else "#f1f5f9"
+        panel_fg = t["header_fg"]
+        self._notif_panel.config(bg=panel_bg)
+        self._notif_hdr_label.config(bg=panel_bg, fg=panel_fg)
+        
+        # Configure tags for main Treeview based on light/dark theme
+        if is_dark:
+            self._tree.tag_configure("update_required", background="#3f0f12", foreground="#fecaca")
+            self._tree.tag_configure("normal", background=t["content_bg"], foreground=t["header_fg"])
+        else:
+            self._tree.tag_configure("update_required", background="#ffebee", foreground="#c0392b")
+            self._tree.tag_configure("normal", background=t["content_bg"], foreground=t["header_fg"])
 
     def on_show(self):
         self._refresh_list()
@@ -2105,13 +2190,17 @@ class UserManagementPage(Page):
         if not any(c.isalpha() for c in name):
             messagebox.showwarning("Invalid Name", "Name must contain at least one letter.")
             return
-        try:
-            with sqlite3.connect(self._db) as conn:
-                if conn.execute("SELECT user_id FROM users WHERE LOWER(user_name) = LOWER(?)", (name,)).fetchone():
-                    messagebox.showwarning("Duplicate Name", "This username already exists. Please add an initial or last name.")
-                    return
-        except Exception:
-            pass
+        if self._updating_user_id is None:
+            duplicate_found = False
+            try:
+                with sqlite3.connect(self._db) as conn:
+                    if conn.execute("SELECT user_id FROM users WHERE LOWER(user_name) = LOWER(?)", (name,)).fetchone():
+                        duplicate_found = True
+            except Exception:
+                pass
+            if duplicate_found:
+                messagebox.showwarning("Duplicate Name", "This username already exists. Please add an initial or last name.")
+                return
         self._running = True
         self._captured = []
         self._dist_hint = ""
@@ -2201,8 +2290,28 @@ class UserManagementPage(Page):
             self._cam_label.image = None
             self._capture_btn.config(state=tk.DISABLED)
             self._cancel_btn.config(state=tk.DISABLED)
-            self._status.config(text="Finishing capture… please wait.", fg="#e67e22")
-            self._wait_for_thread_exit(t)
+            
+            if self._updating_user_id is not None:
+                self._status.config(text="Capture complete. Re-opening edit dialog...", fg="#27ae60")
+                if hasattr(self, "_updating_dlg") and self._updating_dlg:
+                    self._updating_dlg._new_captured_faces = list(self._captured)
+                    self._updating_dlg.deiconify()
+                    try:
+                        self._updating_dlg.grab_set()
+                    except tk.TclError:
+                        pass
+                    self._updating_dlg.lift()
+                # Clear left panel inputs
+                self._name_var.set("")
+                self._school_var.set("")
+                self._place_var.set("")
+                self._start_btn.config(state=tk.NORMAL)
+                # Reset trackers
+                self._updating_user_id = None
+                self._updating_dlg = None
+            else:
+                self._status.config(text="Finishing capture… please wait.", fg="#e67e22")
+                self._wait_for_thread_exit(t)
         else:
             self._status.config(text=f"Captured {n}/{self._SAMPLE_TARGET} samples.", fg="#27ae60")
 
@@ -2244,15 +2353,18 @@ class UserManagementPage(Page):
             self._start_btn.config(state=tk.NORMAL)
             return
             
+        duplicate_found = False
         try:
             with sqlite3.connect(self._db) as conn:
                 if conn.execute("SELECT user_id FROM users WHERE LOWER(user_name) = LOWER(?)", (name,)).fetchone():
-                    messagebox.showwarning("Duplicate Name", "This username already exists. Please add an initial or last name.")
-                    self._register_btn.config(state=tk.NORMAL)
-                    self._status.config(text="Please fix the name and click 'Register User'.", fg="red")
-                    return
+                    duplicate_found = True
         except Exception:
             pass
+        if duplicate_found:
+            messagebox.showwarning("Duplicate Name", "This username already exists. Please add an initial or last name.")
+            self._register_btn.config(state=tk.NORMAL)
+            self._status.config(text="Please fix the name and click 'Register User'.", fg="red")
+            return
 
         # Use inline progress bar
         self._progress.config(mode="indeterminate")
@@ -2476,6 +2588,7 @@ class UserManagementPage(Page):
         self._run_save_with_progress()
 
     def _stop_camera(self, msg=None, reset_register=True):
+        print(f"[_stop_camera] called! updating_user_id={self._updating_user_id}")
         self._running = False
         if self._cam_thread:
             t = self._cam_thread
@@ -2489,8 +2602,28 @@ class UserManagementPage(Page):
         self._cancel_btn.config(state=tk.DISABLED)
         if reset_register:
             self._register_btn.config(state=tk.DISABLED)
-        if msg:
-            self._status.config(text=msg, fg="red")
+            
+        if self._updating_user_id is not None:
+            self._status.config(text="Capture cancelled.", fg="#e74c3c")
+            if hasattr(self, "_updating_dlg") and self._updating_dlg:
+                print(f"[_stop_camera] state before deiconify: {self._updating_dlg.wm_state()}")
+                self._updating_dlg.deiconify()
+                print(f"[_stop_camera] state after deiconify: {self._updating_dlg.wm_state()}")
+                try:
+                    self._updating_dlg.grab_set()
+                except tk.TclError:
+                    pass
+                self._updating_dlg.lift()
+            # Clear left panel inputs
+            self._name_var.set("")
+            self._school_var.set("")
+            self._place_var.set("")
+            # Reset trackers
+            self._updating_user_id = None
+            self._updating_dlg = None
+        else:
+            if msg:
+                self._status.config(text=msg, fg="red")
 
     def _restart_camera(self):
         """Called when admin changes the camera selection mid-session."""
@@ -2521,7 +2654,7 @@ class UserManagementPage(Page):
                     # Using LIKE for search
                     wildcard = f"%{search_query}%"
                     rows = conn.execute(
-                        f"SELECT user_id, user_name, COALESCE(school,''), COALESCE(place,''), type "
+                        f"SELECT user_id, user_name, COALESCE(school,''), COALESCE(place,''), type, created_at "
                         f"FROM users "
                         f"WHERE LOWER(user_name) LIKE ? OR CAST(user_id AS TEXT) LIKE ? OR LOWER(COALESCE(school,'')) LIKE ? "
                         f"ORDER BY {order_by}",
@@ -2529,14 +2662,78 @@ class UserManagementPage(Page):
                     ).fetchall()
                 else:
                     rows = conn.execute(
-                        f"SELECT user_id, user_name, COALESCE(school,''), COALESCE(place,''), type "
+                        f"SELECT user_id, user_name, COALESCE(school,''), COALESCE(place,''), type, created_at "
                         f"FROM users ORDER BY {order_by}"
                     ).fetchall()
             for r in rows:
-                self._tree.insert("", "end", values=r)
+                created_at = r[5]
+                tree_vals = r[:5]
+                if is_created_at_update_required(created_at):
+                    self._tree.insert("", "end", values=tree_vals, tags=("update_required",))
+                else:
+                    self._tree.insert("", "end", values=tree_vals, tags=("normal",))
             self._count_label.config(text=f"{len(rows)} user(s)")
         except Exception:
             pass
+
+        # Recalculate expired users
+        self._expired_users = []
+        try:
+            with sqlite3.connect(self._db) as conn:
+                all_users = conn.execute(
+                    "SELECT user_id, user_name, COALESCE(school,''), COALESCE(place,''), type, created_at FROM users"
+                ).fetchall()
+                for r in all_users:
+                    if is_created_at_update_required(r[5]):
+                        self._expired_users.append(r[:5])
+        except Exception as e:
+            print(f"Error checking notifications: {e}")
+
+        # Update badge button text
+        self._notif_btn.config(text=f"🔔 User Update Notifications ({len(self._expired_users)})")
+
+        # Apply conditional theme coloring
+        t = get_theme()
+        if len(self._expired_users) > 0:
+            self._notif_btn.config(fg=t.get("status_err", "red"))
+        else:
+            self._notif_btn.config(fg=t["logo_sub_fg"])
+
+        # Refresh notification tree
+        for i in self._notif_tree.get_children():
+            self._notif_tree.delete(i)
+        for r in self._expired_users:
+            self._notif_tree.insert("", "end", values=(r[0], r[1]))
+
+    def _toggle_notif_panel(self):
+        self._notif_visible = not self._notif_visible
+        if self._notif_visible:
+            # Shift packing to insert collapsible panel below the header frame
+            self._search_sort_frame.pack_forget()
+            self._tree_frame.pack_forget()
+            self._edit_remove_frame.pack_forget()
+            
+            self._notif_panel.pack(fill="x", pady=6)
+            self._search_sort_frame.pack(fill="x", pady=(0, 4))
+            self._tree_frame.pack(fill="both", expand=True)
+            self._edit_remove_frame.pack(pady=6)
+        else:
+            self._notif_panel.pack_forget()
+
+    def _on_notif_user_click(self, event):
+        sel = self._notif_tree.selection()
+        if not sel:
+            return
+        item_data = self._notif_tree.item(sel[0])
+        clicked_uid = item_data["values"][0]
+        
+        # Find and select the user in the main user list Treeview
+        for item in self._tree.get_children():
+            vals = self._tree.item(item)["values"]
+            if vals and int(vals[0]) == int(clicked_uid):
+                self._tree.selection_set(item)
+                self._tree.see(item)
+                break
 
     def _edit_user(self):
         """Open Edit User dialog: shows registered face photos + editable name/school/place."""
@@ -2632,13 +2829,34 @@ class UserManagementPage(Page):
                 err_lbl.config(text="Name must contain at least one letter.")
                 return
             try:
+                was_expired = is_user_update_required(uid, self._db)
+                duplicate_found = False
                 with sqlite3.connect(self._db) as conn:
                     if conn.execute("SELECT user_id FROM users WHERE LOWER(user_name) = LOWER(?) AND user_id != ?", (new_name, uid)).fetchone():
-                        messagebox.showwarning("Duplicate Name", "This username already exists. Please add an initial or last name.")
-                        return
-                    conn.execute(
-                        "UPDATE users SET user_name=?, school=?, place=? WHERE user_id=?",
-                        (new_name, new_school, new_place, uid))
+                        duplicate_found = True
+                if duplicate_found:
+                    messagebox.showwarning("Duplicate Name", "This username already exists. Please add an initial or last name.")
+                    return
+
+                with sqlite3.connect(self._db) as conn:
+                    if was_expired:
+                        conn.execute(
+                            "UPDATE users SET user_name=?, school=?, place=?, created_at=? WHERE user_id=?",
+                            (new_name, new_school, new_place, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), uid))
+                    else:
+                        conn.execute(
+                            "UPDATE users SET user_name=?, school=?, place=? WHERE user_id=?",
+                            (new_name, new_school, new_place, uid))
+                    
+                    # Save changes to face encodings if new face samples were captured
+                    if hasattr(dlg, "_new_captured_faces") and dlg._new_captured_faces:
+                        conn.execute("DELETE FROM face_encodings WHERE user_id=?", (uid,))
+                        for enc, img_bytes in dlg._new_captured_faces:
+                            conn.execute(
+                                "INSERT INTO face_encodings (user_id, face_encoding, face_image) "
+                                "VALUES (?,?,?)",
+                                (uid, pickle.dumps(enc), img_bytes)
+                            )
                     conn.commit()
                 self._status.config(text=f"User ID {uid} updated successfully.", fg="#27ae60")
                 self._refresh_list()
@@ -2646,10 +2864,25 @@ class UserManagementPage(Page):
             except Exception as e:
                 err_lbl.config(text=f"Error: {e}")
 
+        def _on_update_face_click():
+            dlg.withdraw()
+            self._updating_user_id = uid
+            self._updating_dlg = dlg
+            self._name_var.set(cur_name)
+            self._school_var.set(cur_school)
+            self._place_var.set(cur_place)
+            self._start_camera()
+
         bf = tk.Frame(dlg)
         bf.pack(pady=8)
         tk.Button(bf, text="💾  Save Changes", bg="#27ae60", fg="white", font=("Arial", 11),
                   relief=tk.FLAT, command=_save).pack(side="left", padx=6)
+        
+        # Only show Update Face button if user requires annual update
+        if is_user_update_required(uid, self._db):
+            tk.Button(bf, text="📷  Update Face", bg="#3498db", fg="white", font=("Arial", 11),
+                      relief=tk.FLAT, command=_on_update_face_click).pack(side="left", padx=6)
+            
         tk.Button(bf, text="✖  Cancel", bg="#e74c3c", fg="white", font=("Arial", 11),
                   relief=tk.FLAT, command=dlg.destroy).pack(side="left", padx=6)
 

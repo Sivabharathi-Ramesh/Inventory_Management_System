@@ -17,3 +17,47 @@
 2026-06-20 17:08:02.246497: BLOCKED user Sivabharathi (ID 164) from borrowing At Right Angles (Azim Premji University)_7 (slof_291).
 2026-06-20 17:08:42.782445: User Tranai (ID 175) has 0 unreturned items. Attempting to borrow At Right Angles (Azim Premji University)_7 (slof_291).
 2026-06-20 17:09:19.693761: User Dharshan (ID 111) has 0 unreturned items. Attempting to borrow At Right Angles (Azim Premji University)_7 (slof_291).
+2026-06-20 22:25:32.356095: User Active Tester (ID 1) has 0 unreturned items. Attempting to borrow Test Book (slof_1).
+2026-06-20 23:03:54.885240: User Active Tester (ID 1) has 0 unreturned items. Attempting to borrow Test Book (slof_1).
+2026-06-20 23:04:54.688862: User Active Tester (ID 1) has 0 unreturned items. Attempting to borrow Test Book (slof_1).
+2026-06-20 23:07:34.726049: User Active Tester (ID 5) has 0 unreturned items. Attempting to borrow Test Book (slof_1).
+2026-06-20 23:08:45.568009: User Active Tester (ID 9) has 0 unreturned items. Attempting to borrow Test Book (slof_1).
+2026-06-20 23:09:52.533584: User Active Tester (ID 13) has 0 unreturned items. Attempting to borrow Test Book (slof_1).
+2026-06-20 23:13:28.978776: User Expired AdminUser (ID 1) has 0 unreturned items. Attempting to borrow Completion Book (slof_1).
+2026-06-20 23:13:52.772378: User Expired AdminUser (ID 1) has 0 unreturned items. Attempting to borrow Completion Book (slof_1).
+2026-06-20 23:15:30.930430: User Active Tester (ID 1) has 0 unreturned items. Attempting to borrow Test Book (slof_1).
+2026-06-20 23:30:13.594233: User Meena (ID 104) has 3 unreturned items. Attempting to borrow CLB_Bot_3(purple-2) (slof_336).
+2026-06-20 23:30:13.596253: BLOCKED user Meena (ID 104) from borrowing CLB_Bot_3(purple-2) (slof_336).
+2026-06-20 23:32:38.252531: User Meena (ID 104) has 3 unreturned items. Attempting to borrow Rubik's Cube (5x5)_1 (slof_19).
+2026-06-20 23:32:38.252531: BLOCKED user Meena (ID 104) from borrowing Rubik's Cube (5x5)_1 (slof_19).
+2026-06-20 23:32:57.440320: User Meena (ID 104) has 3 unreturned items. Attempting to borrow Rubik's Cube (5x5)_1 (slof_19).
+2026-06-20 23:32:57.440320: BLOCKED user Meena (ID 104) from borrowing Rubik's Cube (5x5)_1 (slof_19).
+2026-06-20 23:35:16.361030: User Meena (ID 104) has 0 unreturned items. Attempting to borrow Rubik's Cube (5x5)_1 (slof_19).
+2026-06-20 23:35:48.251832: User Meena (ID 104) has 1 unreturned items. Attempting to borrow At Right Angles (Azim Premji University)_3 (slof_287).
+2026-06-20 23:45:24.157395: User Expired AdminUser (ID 1) has 0 unreturned items. Attempting to borrow Completion Book (slof_1).
+2026-06-20 23:45:41.567109: User Active Tester (ID 1) has 0 unreturned items. Attempting to borrow Test Book (slof_1).
+2026-06-20 23:49:56.445290: User Meenatchi (ID 104) has 2 unreturned items. Attempting to borrow CLB_Bot_3(purple-2) (slof_336).
+2026-06-20 23:50:10.181369: User Meenatchi (ID 104) has 3 unreturned items. Attempting to borrow Mathematics SET_4 (slof_203).
+2026-06-20 23:50:10.182369: BLOCKED user Meenatchi (ID 104) from borrowing Mathematics SET_4 (slof_203).
+2026-06-20 23:53:01.375631: User Expired AdminUser (ID 1) has 0 unreturned items. Attempting to borrow Completion Book (slof_1).
+2026-06-20 23:53:19.645588: User Active Tester (ID 1) has 0 unreturned items. Attempting to borrow Test Book (slof_1).
+2026-06-20 23:54:43.548772: User Meenatchi (ID 104) has 2 unreturned items. Attempting to borrow Integrated Indian Sciences (level-1) (slof_300).
+2026-06-20 23:55:18.139077: User Meenatchi (ID 104) has 3 unreturned items. Attempting to borrow Sri Aurobindo Centre For Studies.._1 (slof_309).
+2026-06-20 23:55:18.139077: BLOCKED user Meenatchi (ID 104) from borrowing Sri Aurobindo Centre For Studies.._1 (slof_309).
+2026-06-20 23:59:38.376838: User Meenatchi (ID 104) has 0 unreturned items. Attempting to borrow Mathematics SET_2 (slof_201).
+2026-06-20 23:59:48.834189: User Meenatchi (ID 104) has 1 unreturned items. Attempting to borrow TANGRAMS 330 PUZZLES (Ronald.C.Read) (slof_321).
+2026-06-20 23:59:59.637862: User Meenatchi (ID 104) has 2 unreturned items. Attempting to borrow KAYAL - The Formidable _1 (slof_303).
+2026-06-21 00:00:18.439094: User Meenatchi (ID 104) has 3 unreturned items. Attempting to borrow Integrated Indian Sciences (level-1) (slof_300).
+2026-06-21 00:00:18.439094: BLOCKED user Meenatchi (ID 104) from borrowing Integrated Indian Sciences (level-1) (slof_300).
+2026-06-21 00:01:28.784825: User Meenatchi (ID 104) has 0 unreturned items. Attempting to borrow Integrated Indian Sciences (level-1) (slof_300).
+2026-06-21 00:08:18.023498: User Expired AdminUser (ID 1) has 0 unreturned items. Attempting to borrow Completion Book (slof_1).
+2026-06-21 00:09:28.036542: User Expired AdminUser (ID 1) has 0 unreturned items. Attempting to borrow Completion Book (slof_1).
+2026-06-21 00:10:39.307741: User Meenatchi (ID 104) has 1 unreturned items. Attempting to borrow CLB_Bot_3(purple-2) (slof_336).
+2026-06-21 00:11:02.731994: User Meenatchi (ID 104) has 2 unreturned items. Attempting to borrow Integrated Indian Sciences (level-3) (slof_305).
+2026-06-21 00:11:17.264501: User Meenatchi (ID 104) has 3 unreturned items. Attempting to borrow Chemistry-Pre Level 1 (Dr.R.W.Keller) (slof_284).
+2026-06-21 00:11:17.266004: BLOCKED user Meenatchi (ID 104) from borrowing Chemistry-Pre Level 1 (Dr.R.W.Keller) (slof_284).
+2026-06-21 00:11:35.774121: User Meenatchi (ID 104) has 3 unreturned items. Attempting to borrow Chemistry-Pre Level 1 (Dr.R.W.Keller) (slof_284).
+2026-06-21 00:11:35.774121: BLOCKED user Meenatchi (ID 104) from borrowing Chemistry-Pre Level 1 (Dr.R.W.Keller) (slof_284).
+2026-06-21 00:12:17.533750: User Meenatchi (ID 104) has 2 unreturned items. Attempting to borrow CLB_Bot_3(purple-2) (slof_336).
+2026-06-21 00:12:30.217120: User Meenatchi (ID 104) has 3 unreturned items. Attempting to borrow Chemistry-Pre Level 1 (Dr.R.W.Keller) (slof_284).
+2026-06-21 00:12:30.217120: BLOCKED user Meenatchi (ID 104) from borrowing Chemistry-Pre Level 1 (Dr.R.W.Keller) (slof_284).
