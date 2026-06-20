@@ -1,0 +1,14 @@
+[Unit]
+Description=Inventory Management - Main application (system service template)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/sama/Documents/inventory_management_stemland
+ExecStart=/home/sama/Documents/inventory_management_stemland/run_main.sh
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

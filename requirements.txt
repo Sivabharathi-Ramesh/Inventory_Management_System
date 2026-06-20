@@ -1,0 +1,14 @@
+# Python 3.11 required
+# System deps: sudo apt-get install python3.11-tk libzbar0 libgl1-mesa-glx espeak espeak-ng
+
+opencv-python==4.13.0.92
+insightface==1.0.1
+onnxruntime==1.26.0
+onnx==1.21.0
+faiss-cpu==1.14.2
+numpy==2.4.5
+scipy==1.17.1
+Pillow==12.2.0
+pyzbar==0.1.9
+pyttsx3
+pyaudio
