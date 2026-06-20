@@ -1828,8 +1828,19 @@ class UserManagementPage(Page):
 
     def _start_camera(self):
         name = self._name_var.get().strip()
+        school = self._school_var.get().strip()
+        place = self._place_var.get().strip()
+
+        missing = []
         if not name:
-            messagebox.showwarning("Missing Name", "Please enter a name first.")
+            missing.append("Name")
+        if not school:
+            missing.append("School")
+        if not place:
+            missing.append("Place")
+
+        if missing:
+            messagebox.showwarning("Missing Fields", f"Please enter the following fields first: {', '.join(missing)}.")
             return
         if not any(c.isalpha() for c in name):
             messagebox.showwarning("Invalid Name", "Name must contain at least one letter.")

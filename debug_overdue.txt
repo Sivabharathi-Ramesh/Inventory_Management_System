@@ -10,3 +10,10 @@
 2026-06-20 16:36:18.004991: _check_overdue found 60 items.
 2026-06-20 16:37:09.201262: _check_overdue found 60 items.
 2026-06-20 16:37:47.099703: _check_overdue found 60 items.
+2026-06-20 16:59:53.804042: _check_overdue found 60 items.
+2026-06-20 17:00:53.808512: _check_overdue found 60 items.
+2026-06-20 17:01:53.816202: _check_overdue found 60 items.
+2026-06-20 17:02:53.821945: _check_overdue found 60 items.
+2026-06-20 17:03:53.834328: _check_overdue found 60 items.
+2026-06-20 17:10:29.603912: _check_overdue found 60 items.
+2026-06-20 17:11:29.606225: _check_overdue found 60 items.
