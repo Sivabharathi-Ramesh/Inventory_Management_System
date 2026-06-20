@@ -3376,13 +3376,15 @@ class InventoryApp(tk.Tk):
 
         theme_frame = tk.Frame(self._topbar, bg=t["sidebar_bg"])
         theme_frame.pack(side="right", padx=12)
-        self._theme_var = tk.StringVar(value="AIAT")
-        self._theme_icon = tk.Label(theme_frame, text="☀️", bg=t["sidebar_bg"], fg=t["sidebar_fg"], font=("Arial", 12))
-        self._theme_icon.pack(side="left", padx=4)
-        self._theme_switch = tk.Canvas(theme_frame, width=44, height=24, highlightthickness=0, bd=0, bg=t["sidebar_bg"], cursor="hand2")
-        self._theme_switch.pack(side="left")
-        self._theme_switch.bind("<Button-1>", lambda e: self._toggle_theme())
-        self._draw_switch(False)
+        self._theme_lbl = tk.Label(theme_frame, text="Theme:", bg=t["sidebar_bg"],
+                                   fg=t["sidebar_fg"], font=("Arial", 9))
+        self._theme_lbl.pack(side="left", padx=4)
+        self._theme_var = tk.StringVar(value="Default")
+        self._theme_cb = ttk.Combobox(theme_frame, textvariable=self._theme_var,
+                                      values=["Default", "Light", "Dark"],
+                                      state="readonly", width=8, font=("Arial", 9))
+        self._theme_cb.pack(side="left", padx=4)
+        self._theme_cb.bind("<<ComboboxSelected>>", self._on_theme_change)
 
         # ── Camera selector (admin topbar) ────────────────────
         cam_frame = tk.Frame(self._topbar, bg=t["sidebar_bg"])
@@ -3424,25 +3426,19 @@ class InventoryApp(tk.Tk):
                   and self._pages["home"]._mode is None else None)
         self.bind("<F2>", lambda e: self._show_page("login"))
 
-    def _toggle_theme(self):
-        current = self._theme_var.get()
-        if current in ("AIAT", "Light"):
-            new_theme = "Dark"
-            is_dark = True
-            icon = "🌙"
-        else:
+    def _on_theme_change(self, event=None):
+        selected = self._theme_var.get()
+        if selected == "Default":
+            new_theme = "AIAT"
+        elif selected == "Light":
             new_theme = "Light"
-            is_dark = False
-            icon = "☀️"
+        elif selected == "Dark":
+            new_theme = "Dark"
+        else:
+            new_theme = "AIAT"
             
-        self._theme_var.set(new_theme)
-        self._draw_switch(is_dark)
-        self._theme_icon.config(text=icon)
-        
         set_theme(new_theme)
         t = get_theme()
-        self._theme_switch.config(bg=t["sidebar_bg"])
-        self._theme_icon.config(bg=t["sidebar_bg"], fg=t["sidebar_fg"])
         
         # Topbar
         self._topbar.config(bg=t["sidebar_bg"])
@@ -3466,17 +3462,6 @@ class InventoryApp(tk.Tk):
                     page.apply_theme()
             except Exception:
                 pass
-
-    def _draw_switch(self, is_dark):
-        self._theme_switch.delete("all")
-        bg_color = "#3b82f6" if is_dark else "#cbd5e1"
-        self._theme_switch.create_arc(2, 2, 22, 22, start=90, extent=180, fill=bg_color, outline=bg_color)
-        self._theme_switch.create_arc(22, 2, 42, 22, start=-90, extent=180, fill=bg_color, outline=bg_color)
-        self._theme_switch.create_rectangle(12, 2, 32, 22, fill=bg_color, outline=bg_color)
-        if is_dark:
-            self._theme_switch.create_oval(24, 4, 40, 20, fill="#ffffff", outline="")
-        else:
-            self._theme_switch.create_oval(4, 4, 20, 20, fill="#ffffff", outline="")
 
     def _on_camera_change(self, _event=None):
         global _active_camera_index
