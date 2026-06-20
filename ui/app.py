@@ -667,6 +667,9 @@ class HomePage(Page):
         self._overdue_label = tk.Label(self._overdue_frame, text="", fg="#c0392b", bg="#ffebee",
                                        font=("Arial", 11, "bold"), justify="left")
         self._overdue_label.pack(padx=10, pady=5, anchor="w")
+        self._overdue_btn = tk.Button(self._overdue_frame, text="Read More...", fg="#2980b9", bg="#ffebee",
+                                      activebackground="#ffebee", relief=tk.FLAT, font=("Arial", 10, "underline", "bold"),
+                                      cursor="hand2", command=self._show_all_overdue)
 
         # ── today's history ──
         tk.Label(self, text="Today's History", font=("Arial", 13, "bold")).pack(anchor="w", padx=16)
@@ -1046,6 +1049,30 @@ class HomePage(Page):
                         f"  Time    : {now_display}")
                     return
                 else:
+                    # Check if the user has more than 2 unreturned products
+                    c.execute("""
+                        SELECT product_id, product_name, check_out_time
+                        FROM product_history
+                        WHERE user_id = ? AND check_in_time IS NULL
+                    """, (user_id,))
+                    unreturned_items = c.fetchall()
+                    try:
+                        with open("debug_borrow.txt", "a") as f:
+                            f.write(f"{datetime.now()}: User {user_name} (ID {user_id}) has {len(unreturned_items)} unreturned items. Attempting to borrow {pname} ({pid}).\n")
+                    except:
+                        pass
+                    if len(unreturned_items) > 2:
+                        try:
+                            with open("debug_borrow.txt", "a") as f:
+                                f.write(f"{datetime.now()}: BLOCKED user {user_name} (ID {user_id}) from borrowing {pname} ({pid}).\n")
+                        except:
+                            pass
+                        self._status.config(text=f"⚠ Scan blocked for {user_name}: return borrowed products.", fg="red")
+                        self._start_btn.config(state=tk.NORMAL)
+                        self._cancel_btn.config(state=tk.DISABLED)
+                        self._show_user_overdue_block_popup(user_name, unreturned_items)
+                        return
+
                     c.execute("""INSERT INTO product_history
                                  (product_id, product_name, user_id, user_name, check_out_time, check_in_time)
                                  VALUES (?,?,?,?,?,NULL)""", (pid, pname, user_id, user_name, now_db))
@@ -1155,39 +1182,171 @@ class HomePage(Page):
                     SELECT ph.product_id, ph.product_name, 
                            COALESCE(u.user_name, ph.user_name), 
                            ph.check_out_time 
-                    FROM product_history ph
-                    LEFT JOIN users u ON ph.user_id = u.user_id
-                    WHERE ph.check_in_time IS NULL
+                     FROM product_history ph
+                     LEFT JOIN users u ON ph.user_id = u.user_id
+                     WHERE ph.check_in_time IS NULL
                 """)
                 rows = c.fetchall()
-        except Exception:
+        except Exception as e:
+            try:
+                with open("debug_overdue.txt", "a") as f:
+                    f.write(f"{datetime.now()}: DB Query error in _check_overdue: {e}\n")
+            except:
+                pass
             return
             
         now = datetime.now()
         overdue_list = []
+        self._overdue_raw_items = []
         for pid, pname, uname, cout in rows:
             try:
                 cout_dt = datetime.strptime(cout, "%Y-%m-%d %H:%M:%S")
                 # Overdue if it's from a previous day OR it's today and past 8:00 PM (20:00)
                 if cout_dt.date() < now.date() or (cout_dt.date() == now.date() and now.hour >= 20):
                     overdue_list.append(f"• {pname} ({pid}) — Borrowed by {uname} at {cout_dt.strftime('%I:%M %p')}")
-            except Exception:
-                pass
+                    self._overdue_raw_items.append((pid, pname, uname, cout_dt))
+            except Exception as e:
+                try:
+                    with open("debug_overdue.txt", "a") as f:
+                        f.write(f"{datetime.now()}: Row parsing error in _check_overdue: {e}\n")
+                except:
+                    pass
                 
+        try:
+            with open("debug_overdue.txt", "a") as f:
+                f.write(f"{datetime.now()}: _check_overdue found {len(overdue_list)} items.\n")
+        except:
+            pass
+
         if overdue_list:
             if len(overdue_list) > 5:
                 displayed = overdue_list[:5]
-                displayed.append(f"... and {len(overdue_list) - 5} more items overdue.")
+                self._overdue_btn.pack(padx=10, pady=(0, 5), anchor="w")
             else:
                 displayed = overdue_list
+                self._overdue_btn.pack_forget()
                 
             msg = "⚠ OVERDUE ITEMS (Not returned by 8:00 PM):\n" + "\n".join(displayed)
             self._overdue_label.config(text=msg)
             if not self._overdue_frame.winfo_ismapped():
                 self._overdue_frame.pack(fill="x")
         else:
+            self._overdue_btn.pack_forget()
             if self._overdue_frame.winfo_ismapped():
                 self._overdue_frame.pack_forget()
+
+    def _show_all_overdue(self):
+        """Open a beautiful modal dialog listing all overdue items."""
+        dlg = tk.Toplevel(self)
+        dlg.title("All Overdue Items")
+        dlg.geometry("600x400")
+        dlg.transient(self.winfo_toplevel())
+        try:
+            dlg.wait_visibility()
+            dlg.grab_set()
+        except tk.TclError:
+            pass
+        dlg.lift()
+
+        # Style/Header
+        hdr = tk.Frame(dlg, bg="#ffebee", pady=10)
+        hdr.pack(fill="x")
+        tk.Label(hdr, text="⚠  All Overdue Items", font=("Arial", 14, "bold"), fg="#c0392b", bg="#ffebee").pack()
+
+        # Treeview list
+        tf = tk.Frame(dlg)
+        tf.pack(fill="both", expand=True, padx=10, pady=10)
+
+        cols = ("pid", "pname", "uname", "time")
+        widths = (80, 160, 140, 180)
+        headers = ("Product ID", "Product Name", "Borrowed By", "Borrow Time")
+
+        tree = ttk.Treeview(tf, columns=cols, show="headings")
+        for c, h, w in zip(cols, headers, widths):
+            tree.heading(c, text=h)
+            tree.column(c, anchor="center", width=w)
+
+        sb = ttk.Scrollbar(tf, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        tree.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+        if hasattr(self, "_overdue_raw_items"):
+            for pid, pname, uname, cout_dt in self._overdue_raw_items:
+                tree.insert("", "end", values=(pid, pname, uname, cout_dt.strftime("%d-%m-%Y %I:%M %p")))
+
+        # Close button
+        btn = tk.Button(dlg, text="Close", font=("Arial", 11, "bold"), bg="#c0392b", fg="white",
+                        relief=tk.FLAT, padx=20, pady=6, command=dlg.destroy)
+        btn.pack(pady=10)
+
+    def _show_user_overdue_block_popup(self, user_name, unreturned_items):
+        """Open a beautiful block popup when a user has >2 unreturned items and attempts to borrow."""
+        text_to_speech("Scan blocked. Please return your borrowed products first.")
+        self._status.config(text=f"⚠ Scan blocked for {user_name}: return borrowed products.", fg="red")
+
+        dlg = tk.Toplevel(self)
+        dlg.title("Overdue Block Alert")
+        dlg.geometry("550x380")
+        dlg.transient(self.winfo_toplevel())
+        try:
+            dlg.wait_visibility()
+            dlg.grab_set()
+        except tk.TclError:
+            pass
+        dlg.lift()
+        dlg.resizable(False, False)
+
+        # Main frame
+        main_frame = tk.Frame(dlg, padx=20, pady=20)
+        main_frame.pack(fill="both", expand=True)
+
+        # Warning icon/header
+        header_frame = tk.Frame(main_frame)
+        header_frame.pack(fill="x", pady=(0, 10))
+
+        warn_lbl = tk.Label(header_frame, text="⚠", font=("Arial", 36), fg="#e74c3c")
+        warn_lbl.pack(side="left", padx=(0, 10))
+
+        title_lbl = tk.Label(header_frame, text="Borrow Limit Blocked", font=("Arial", 16, "bold"), fg="#c0392b")
+        title_lbl.pack(side="left", anchor="w")
+
+        # Message description
+        msg = f"Hello {user_name},\n\nYou have currently borrowed {len(unreturned_items)} products (limit is 2).\nYou must return these products before you can borrow any others."
+        msg_lbl = tk.Label(main_frame, text=msg, font=("Arial", 11), justify="left", wraplength=480)
+        msg_lbl.pack(anchor="w", pady=(0, 15))
+
+        # List of unreturned items
+        list_frame = tk.LabelFrame(main_frame, text="Items to Return", font=("Arial", 10, "bold"), padx=10, pady=10)
+        list_frame.pack(fill="both", expand=True, pady=(0, 15))
+
+        # Treeview for items
+        cols = ("pid", "pname", "time")
+        tree = ttk.Treeview(list_frame, columns=cols, show="headings", height=4)
+        tree.heading("pid", text="Product ID")
+        tree.heading("pname", text="Product Name")
+        tree.heading("time", text="Borrowed Time")
+        tree.column("pid", width=80, anchor="center")
+        tree.column("pname", width=180, anchor="w")
+        tree.column("time", width=160, anchor="center")
+
+        sb = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        tree.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+        for pid, pname, cout in unreturned_items:
+            try:
+                cout_dt = datetime.strptime(cout, "%Y-%m-%d %H:%M:%S")
+                cout_str = cout_dt.strftime("%d-%m-%Y %I:%M %p")
+            except Exception:
+                cout_str = cout
+            tree.insert("", "end", values=(pid, pname, cout_str))
+
+        # Close/OK Button
+        btn = tk.Button(main_frame, text="OK, I will return them", font=("Arial", 11, "bold"),
+                        bg="#2980b9", fg="white", relief=tk.FLAT, padx=20, pady=8, command=dlg.destroy)
+        btn.pack()
 
     def _refresh_history(self):
         show_items(self._tree, db_file=self._db)
@@ -1452,9 +1611,12 @@ class UserManagementPage(Page):
             self._form_entries.append(ent)
             
             ent.grid(row=r, column=1, pady=3, padx=4, sticky="w")
-            if attr == "_name_var":
-                self._name_entry = ent
-                ent.bind("<Return>", lambda e: self._start_camera())
+
+        # Navigation binding for input fields: Enter moves focus to the next field.
+        self._name_entry = self._form_entries[0]
+        self._form_entries[0].bind("<Return>", lambda e: self._form_entries[1].focus_set())
+        self._form_entries[1].bind("<Return>", lambda e: self._form_entries[2].focus_set())
+        self._form_entries[2].bind("<Return>", lambda e: self._start_btn.focus_set())
 
         # ── Step 2: Start Camera button — placed immediately below the form ──
         self._start_btn = tk.Button(self._left_panel, text="📷  Start Face Capture",

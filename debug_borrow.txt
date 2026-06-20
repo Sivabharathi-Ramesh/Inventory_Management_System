@@ -1,0 +1,7 @@
+2026-06-20 16:29:21.677741: User meenatchi (ID 104) has 3 unreturned items. Attempting to borrow Rubik's Cube (5x5)_2 (slof_268).
+2026-06-20 16:29:21.677741: BLOCKED user meenatchi (ID 104) from borrowing Rubik's Cube (5x5)_2 (slof_268).
+2026-06-20 16:30:21.834133: User meenatchi (ID 104) has 3 unreturned items. Attempting to borrow PYRAMINX_1 (Puzzle) (slof_266).
+2026-06-20 16:30:21.834133: BLOCKED user meenatchi (ID 104) from borrowing PYRAMINX_1 (Puzzle) (slof_266).
+2026-06-20 16:31:17.939766: User meenatchi (ID 104) has 2 unreturned items. Attempting to borrow Rubik's Cube (5x5)_2 (slof_268).
+2026-06-20 16:31:42.040662: User meenatchi (ID 104) has 3 unreturned items. Attempting to borrow Flowers (The Mother)_1 (slof_307).
+2026-06-20 16:31:42.042168: BLOCKED user meenatchi (ID 104) from borrowing Flowers (The Mother)_1 (slof_307).
