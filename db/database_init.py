@@ -75,14 +75,34 @@ def initialize_database(db_file='DB_FILE'):
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_name TEXT NOT NULL
+            product_name TEXT NOT NULL,
+            stemland TEXT DEFAULT 'Main Stemland'
+        )
+        """)
+        # Migration: add stemland column if it doesn't exist yet (existing DBs)
+        try:
+            cursor.execute("ALTER TABLE items ADD COLUMN stemland TEXT DEFAULT 'Main Stemland'")
+        except sqlite3.OperationalError:
+            pass
+
+        # Create stemland_transfers table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS stemland_transfers (
+            transfer_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id TEXT NOT NULL,
+            product_name TEXT NOT NULL,
+            from_stemland TEXT NOT NULL,
+            to_stemland TEXT NOT NULL,
+            moved_by TEXT NOT NULL,
+            transfer_time TEXT DEFAULT (datetime('now', 'localtime'))
         )
         """)
 
-        # Create the formatted_items view
+        # Recreate the formatted_items view to include stemland
+        cursor.execute("DROP VIEW IF EXISTS formatted_items;")
         cursor.execute("""
-        CREATE VIEW IF NOT EXISTS formatted_items AS 
-        SELECT 'slof_' || id AS product_id, product_name
+        CREATE VIEW formatted_items AS 
+        SELECT 'slof_' || id AS product_id, product_name, stemland
         FROM items;
         """)
 

@@ -525,7 +525,7 @@ class Page(tk.Frame):
 # ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 class Sidebar(tk.Frame):
-    _ADMIN_PAGES = ("admin_history", "user_management", "product_manager", "analytics")
+    _ADMIN_PAGES = ("admin_history", "user_management", "product_manager", "analytics", "transfers")
 
     def __init__(self, parent, show_page_cb, **kw):
         t = get_theme()
@@ -560,6 +560,7 @@ class Sidebar(tk.Frame):
         _admin_btn("  👤  Users",    "user_management")
         _admin_btn("  📦  Products", "product_manager")
         _admin_btn("  📊  Analytics", "analytics")
+        _admin_btn("  🔄  Transfers", "transfers")
 
         self._logout_btn = tk.Button(self, text="🚪  Logout",
                                      relief=tk.FLAT, font=("Arial", 10),
@@ -1703,7 +1704,7 @@ class LoginPage(Page):
                                    (username,)).fetchone()
             if row and row[0] == hashed:
                 self._err.config(text="")
-                self._on_success()
+                self._on_success(username)
             else:
                 self._err.config(text="Invalid username or password.")
         except Exception as e:
@@ -2999,6 +3000,11 @@ class ProductManagerPage(Page):
         self._entry = tk.Entry(self._ef, width=30, font=("Arial", 11))
         self._entry.pack(side="left", padx=(0, 8))
         self._entry.bind("<Return>", lambda e: self._add_item())
+        self._stemland_var = tk.StringVar(value="Main Stemland")
+        self._stemland_cb = ttk.Combobox(self._ef, textvariable=self._stemland_var,
+                                         values=["Main Stemland", "Udavi School Stemland", "Isai Ambalam School Stemland"],
+                                         state="readonly", width=25, font=("Arial", 10))
+        self._stemland_cb.pack(side="left", padx=4)
         self._add_btn = tk.Button(self._ef, text="➕ Add", relief=tk.FLAT,
                                   command=self._add_item)
         self._add_btn.pack(side="left", padx=4)
@@ -3013,17 +3019,29 @@ class ProductManagerPage(Page):
         self._refresh_btn = tk.Button(self._sf, text="🔄", command=self._refresh, relief=tk.FLAT)
         self._refresh_btn.pack(side="left", padx=4)
 
+        # Filter dropdown
+        self._filter_lbl = tk.Label(self._sf, text="Filter:", font=("Arial", 10))
+        self._filter_lbl.pack(side="left", padx=(10, 2))
+        self._filter_var = tk.StringVar(value="All")
+        self._filter_cb = ttk.Combobox(self._sf, textvariable=self._filter_var,
+                                       values=["All", "Main Stemland", "Udavi School Stemland", "Isai Ambalam School Stemland"],
+                                       state="readonly", width=25, font=("Arial", 10))
+        self._filter_cb.pack(side="left", padx=4)
+        self._filter_cb.bind("<<ComboboxSelected>>", lambda e: self._search())
+
         # tree
         tf = tk.Frame(self._frame)
         tf.pack(fill="both", expand=True)
-        self._tree = ttk.Treeview(tf, columns=("Select", "Product ID", "Product Name"), show="headings")
+        self._tree = ttk.Treeview(tf, columns=("Select", "Product ID", "Product Name", "Stemland"), show="headings")
         self._tree.tag_configure("checked", background="#d5f5e3")
         self._tree.heading("Select",       text="Select")
         self._tree.heading("Product ID",   text="Product ID")
         self._tree.heading("Product Name", text="Product Name")
+        self._tree.heading("Stemland",     text="Stemland")
         self._tree.column("Select",       width=60, anchor="center")
-        self._tree.column("Product ID",   width=130, anchor="center")
-        self._tree.column("Product Name", width=260, anchor="center")
+        self._tree.column("Product ID",   width=110, anchor="center")
+        self._tree.column("Product Name", width=220, anchor="center")
+        self._tree.column("Stemland",     width=180, anchor="center")
         sb = ttk.Scrollbar(tf, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=sb.set)
         self._tree.pack(side="left", fill="both", expand=True)
@@ -3087,23 +3105,26 @@ class ProductManagerPage(Page):
                                     
         self._status.config(bg=t["content_bg"], fg=t["logo_sub_fg"] if is_dark else "#555")
         self._search_bar.apply_theme()
+        self._filter_lbl.config(bg=t["content_bg"], fg=t["header_fg"])
 
     def on_show(self):
         self._refresh()
 
     def _add_item(self):
         name = self._entry.get().strip()
+        stemland = self._stemland_var.get()
         if not name:
             self._status.config(text="Enter a product name.", fg="red")
             return
-        self._cursor.execute("INSERT INTO items (product_name) VALUES (?)", (name,))
+        self._cursor.execute("INSERT INTO items (product_name, stemland) VALUES (?, ?)", (name, stemland))
         self._conn.commit()
         self._entry.delete(0, tk.END)
         self._status.config(text="Product added.", fg="#27ae60")
-        messagebox.showinfo("Success", f"Product '{name}' added successfully!")
+        messagebox.showinfo("Success", f"Product '{name}' added successfully to {stemland}!")
         self._refresh()
 
     def _refresh(self):
+        self._filter_var.set("All")
         self._search_bar.clear(trigger_command=False)
         self._load_items()
 
@@ -3115,14 +3136,26 @@ class ProductManagerPage(Page):
         for i in self._tree.get_children():
             self._tree.delete(i)
         self._checked_items.clear()
+        
+        filter_val = self._filter_var.get()
+        
         if term:
-            self._cursor.execute(
-                "SELECT 'slof_'||id, product_name FROM items WHERE product_name LIKE ? OR ('slof_'||id) LIKE ?",
-                (f"%{term}%", f"%{term}%"))
+            if filter_val == "All":
+                self._cursor.execute(
+                    "SELECT 'slof_'||id, product_name, stemland FROM items WHERE product_name LIKE ? OR ('slof_'||id) LIKE ? OR stemland LIKE ?",
+                    (f"%{term}%", f"%{term}%", f"%{term}%"))
+            else:
+                self._cursor.execute(
+                    "SELECT 'slof_'||id, product_name, stemland FROM items WHERE (product_name LIKE ? OR ('slof_'||id) LIKE ?) AND stemland = ?",
+                    (f"%{term}%", f"%{term}%", filter_val))
         else:
-            self._cursor.execute("SELECT 'slof_'||id, product_name FROM items")
+            if filter_val == "All":
+                self._cursor.execute("SELECT 'slof_'||id, product_name, stemland FROM items")
+            else:
+                self._cursor.execute("SELECT 'slof_'||id, product_name, stemland FROM items WHERE stemland = ?", (filter_val,))
+                
         for row in self._cursor.fetchall():
-            item_id = self._tree.insert("", tk.END, values=("☐", row[0], row[1]))
+            item_id = self._tree.insert("", tk.END, values=("☐", row[0], row[1], row[2]))
             self._checked_items[item_id] = False
 
     def _on_select(self, _event=None):
@@ -3148,7 +3181,7 @@ class ProductManagerPage(Page):
             self._checked_items[item_id] = is_checked
             current_values = self._tree.item(item_id, "values")
             new_char = "✅" if is_checked else "☐"
-            self._tree.item(item_id, values=(new_char, current_values[1], current_values[2]))
+            self._tree.item(item_id, values=(new_char, current_values[1], current_values[2], current_values[3]))
             
             if is_checked:
                 self._tree.item(item_id, tags=("checked",))
@@ -3163,6 +3196,7 @@ class ProductManagerPage(Page):
         item = self._tree.item(sel[0])
         pid = item["values"][1]
         pname = item["values"][2]
+        pstemland = item["values"][3] if len(item["values"]) > 3 else "Main Stemland"
         
         dlg = tk.Toplevel(self)
         dlg.title(pid)
@@ -3188,22 +3222,42 @@ class ProductManagerPage(Page):
         name_var = tk.StringVar(value=pname)
         name_entry = tk.Entry(f, textvariable=name_var, font=("Arial", 11), state="disabled", width=25)
         name_entry.grid(row=1, column=1, sticky="w", pady=5, padx=5)
+
+        tk.Label(f, text="Stemland:", font=("Arial", 11, "bold")).grid(row=2, column=0, sticky="e", pady=5, padx=5)
+        stemland_var = tk.StringVar(value=pstemland)
+        stemland_cb = ttk.Combobox(f, textvariable=stemland_var,
+                                     values=["Main Stemland", "Udavi School Stemland", "Isai Ambalam School Stemland"],
+                                     state="disabled", width=22, font=("Arial", 10))
+        stemland_cb.grid(row=2, column=1, sticky="w", pady=5, padx=5)
         
         btn_frame = tk.Frame(dlg, pady=10)
         btn_frame.pack()
         
         def _edit():
             name_entry.config(state="normal")
+            stemland_cb.config(state="readonly")
             name_entry.focus()
             edit_btn.config(text="Save Changes", command=_save, bg="#27ae60")
             
         def _save():
             new_name = name_var.get().strip()
+            new_stemland = stemland_var.get()
             if not new_name:
                 messagebox.showwarning("Warning", "Product name cannot be empty.", parent=dlg)
                 return
             item_id = str(pid).replace("slof_", "")
-            self._cursor.execute("UPDATE items SET product_name=? WHERE id=?", (new_name, item_id))
+
+            if new_stemland != pstemland:
+                app = self.winfo_toplevel()
+                moved_by = getattr(app, "_logged_in_user", "admin")
+                current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self._cursor.execute("""
+                    INSERT INTO stemland_transfers (product_id, product_name, from_stemland, to_stemland, moved_by, transfer_time)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (pid, new_name, pstemland, new_stemland, moved_by, current_time))
+                self._conn.commit()
+
+            self._cursor.execute("UPDATE items SET product_name=?, stemland=? WHERE id=?", (new_name, new_stemland, item_id))
             self._conn.commit()
             self._refresh()
             self._status.config(text="Product modified.", fg="#27ae60")
@@ -3573,6 +3627,365 @@ class AnalyticsPage(Page):
         for rank, (name, count) in enumerate(top_products, 1):
             self._prod_tree.insert("", tk.END, values=(rank, name, count))
 
+# ─── Transfers page ───────────────────────────────────────────────────────────
+
+class TransfersPage(Page):
+    def __init__(self, parent, db_file, **kw):
+        super().__init__(parent, **kw)
+        self._db = db_file
+        self._running = False
+        self._render_loop_active = False
+        self._cam_thread = None
+        self._detector = cv2.QRCodeDetector()
+
+        # ── layout: two columns ──
+        self.columnconfigure(0, weight=0)  # Left column for camera
+        self.columnconfigure(1, weight=1)  # Right column for log table
+        self.rowconfigure(0, weight=1)
+
+        self._left_col = tk.Frame(self, padx=16, pady=12)
+        self._left_col.grid(row=0, column=0, sticky="nsew")
+
+        self._right_col = tk.Frame(self, padx=16, pady=12)
+        self._right_col.grid(row=0, column=1, sticky="nsew")
+
+        # ── left column: camera scanner ──
+        # Large prominent scan button
+        self._scan_btn = tk.Button(self._left_col, text="📷 Start Camera Scanner", font=("Arial", 14, "bold"),
+                                   relief=tk.FLAT, pady=14, command=self._toggle_scanner)
+        self._scan_btn.pack(fill="x", pady=(0, 10))
+
+        # Fixed-size preview container to prevent Tcl/Tk size propagation issues
+        self._cam_container = tk.Frame(self._left_col, width=PREVIEW_W, height=PREVIEW_H, bg="#1a1a2e")
+        self._cam_container.pack_propagate(False)
+        self._cam_container.pack(pady=6)
+
+        self._cam_label = tk.Label(self._cam_container, bg="#1a1a2e")
+        self._cam_label.pack(fill="both", expand=True)
+
+        self._status = tk.Label(self._left_col, text="Camera is ready.", font=("Arial", 11), fg="#555")
+        self._status.pack(pady=4)
+
+        # ── inline transfer form frame ──
+        self._transfer_frame = tk.Frame(self._left_col, pady=10)
+        self._transfer_frame.pack(fill="x", expand=True)
+
+        self._scanned_title_lbl = tk.Label(self._transfer_frame, text="🔄 Transfer Product", font=("Arial", 12, "bold"))
+        self._scanned_info_lbl = tk.Label(self._transfer_frame, text="", font=("Arial", 11))
+        self._scanned_curr_lbl = tk.Label(self._transfer_frame, text="", font=("Arial", 11, "italic"))
+        
+        self._dest_var = tk.StringVar(value="Main Stemland")
+        self._dest_cb = ttk.Combobox(self._transfer_frame, textvariable=self._dest_var,
+                                     values=["Main Stemland", "Udavi School Stemland", "Isai Ambalam School Stemland"],
+                                     state="readonly", width=22, font=("Arial", 10))
+        
+        self._btn_subframe = tk.Frame(self._transfer_frame)
+        
+        self._confirm_btn = tk.Button(self._btn_subframe, text="Confirm Transfer", bg="#27ae60", fg="white",
+                                      font=("Arial", 11, "bold"), relief=tk.FLAT, command=self._confirm_transfer, width=15)
+        self._cancel_btn = tk.Button(self._btn_subframe, text="Cancel", bg="#7f8c8d", fg="white",
+                                     font=("Arial", 11), relief=tk.FLAT, command=self._cancel_transfer, width=10)
+        
+        self._scanned_product_id = None
+        self._scanned_product_name = None
+        self._scanned_current_location = None
+        self._hide_transfer_form()
+
+        # ── right column: toolbar and transfers table ──
+        self._bar = tk.Frame(self._right_col, pady=8)
+        self._bar.pack(fill="x")
+        self._title_lbl = tk.Label(self._bar, text="Stemland Transfers Log", font=("Arial", 15, "bold"))
+        self._title_lbl.pack(side="left")
+
+        self._refresh_btn = tk.Button(self._bar, text="🔄 Refresh", relief=tk.FLAT,
+                                      command=self._refresh)
+        self._refresh_btn.pack(side="right", padx=4)
+        self._search_var = tk.StringVar()
+        self._search_bar = SearchEntry(self._bar, placeholder="Search transfers...", command=self._do_search, textvariable=self._search_var, entry_width=22)
+        self._search_bar.pack(side="right", padx=4)
+
+        # ── tree ──
+        self._tf = tk.Frame(self._right_col)
+        self._tf.pack(fill="both", expand=True, pady=6)
+        cols = ("Transfer ID", "Product ID", "Product Name", "From Stemland", "To Stemland", "Moved By", "Time")
+        self._tree = ttk.Treeview(self._tf, columns=cols, show="headings")
+        widths = [90, 110, 180, 130, 130, 110, 150]
+        for col, w in zip(cols, widths):
+            self._tree.heading(col, text=col)
+            self._tree.column(col, anchor="center", width=w)
+        sb = ttk.Scrollbar(self._tf, orient="vertical", command=self._tree.yview)
+        self._tree.configure(yscrollcommand=sb.set)
+        self._tree.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+    def _show_transfer_form(self, product_id, name, current_location):
+        self._scanned_product_id = product_id
+        self._scanned_product_name = name
+        self._scanned_current_location = current_location
+        
+        self._scanned_title_lbl.pack(pady=4)
+        self._scanned_info_lbl.config(text=f"Product: {name} ({product_id})")
+        self._scanned_info_lbl.pack(pady=2)
+        self._scanned_curr_lbl.config(text=f"Current Location: {current_location}", fg="#e74c3c" if current_location != "Main Stemland" else "#2980b9")
+        self._scanned_curr_lbl.pack(pady=2)
+        
+        # Set default destination to something other than current location
+        available_destinations = ["Main Stemland", "Udavi School Stemland", "Isai Ambalam School Stemland"]
+        if current_location in available_destinations:
+            idx = available_destinations.index(current_location)
+            next_idx = (idx + 1) % len(available_destinations)
+            self._dest_var.set(available_destinations[next_idx])
+        else:
+            self._dest_var.set("Main Stemland")
+            
+        self._dest_cb.pack(pady=6)
+        
+        self._btn_subframe.pack(pady=6)
+        self._confirm_btn.pack(side="left", padx=6)
+        self._cancel_btn.pack(side="left", padx=6)
+
+    def _hide_transfer_form(self):
+        self._scanned_product_id = None
+        self._scanned_product_name = None
+        self._scanned_current_location = None
+        
+        self._scanned_title_lbl.pack_forget()
+        self._scanned_info_lbl.pack_forget()
+        self._scanned_curr_lbl.pack_forget()
+        self._dest_cb.pack_forget()
+        self._btn_subframe.pack_forget()
+        self._confirm_btn.pack_forget()
+        self._cancel_btn.pack_forget()
+
+    def _confirm_transfer(self):
+        product_id = self._scanned_product_id
+        pname = self._scanned_product_name
+        pstemland = self._scanned_current_location
+        dest_stemland = self._dest_var.get()
+        
+        if dest_stemland == pstemland:
+            messagebox.showwarning("Warning", f"The product is already at {pstemland}.")
+            return
+
+        try:
+            item_id = product_id.replace("slof_", "")
+            app = self.winfo_toplevel()
+            moved_by = getattr(app, "_logged_in_user", "admin")
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            with sqlite3.connect(self._db) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO stemland_transfers (product_id, product_name, from_stemland, to_stemland, moved_by, transfer_time) VALUES (?, ?, ?, ?, ?, ?)",
+                    (product_id, pname, pstemland, dest_stemland, moved_by, current_time)
+                )
+                cursor.execute(
+                    "UPDATE items SET stemland = ? WHERE id = ?",
+                    (dest_stemland, item_id)
+                )
+                conn.commit()
+
+            text_to_speech("Transfer successful.")
+            messagebox.showinfo("Success", f"Product '{pname}' successfully transferred to {dest_stemland}!")
+            self._hide_transfer_form()
+            self._refresh()
+            self._start_camera()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to transfer item:\n{e}")
+
+    def _cancel_transfer(self):
+        self._hide_transfer_form()
+        self._start_camera()
+
+    def apply_theme(self):
+        t = get_theme()
+        self.config(bg=t["content_bg"])
+        self._left_col.config(bg=t["content_bg"])
+        self._right_col.config(bg=t["content_bg"])
+        self._bar.config(bg=t["content_bg"])
+        self._title_lbl.config(bg=t["content_bg"], fg=t["header_fg"])
+        self._refresh_btn.config(bg=t["btn_secondary"], fg=t["btn_secondary_fg"],
+                                 activebackground=t["btn_secondary"], activeforeground=t["btn_secondary_fg"])
+        
+        is_dark = (t.get("content_bg", "#ffffff") in ("#020617", "#0f172a"))
+        btn_bg = t["btn_primary"] if not self._running else "#e74c3c"
+        btn_fg = t["btn_primary_fg"] if not self._running else "white"
+        self._scan_btn.config(bg=btn_bg, fg=btn_fg, activebackground=btn_bg, activeforeground=btn_fg)
+        
+        self._tf.config(bg=t["content_bg"])
+        self._search_bar.apply_theme()
+        self._status.config(bg=t["content_bg"], fg=t["logo_sub_fg"] if is_dark else "#555")
+
+        self._transfer_frame.config(bg=t["content_bg"])
+        self._btn_subframe.config(bg=t["content_bg"])
+        self._scanned_title_lbl.config(bg=t["content_bg"], fg=t["header_fg"])
+        self._scanned_info_lbl.config(bg=t["content_bg"], fg=t["header_fg"])
+        self._scanned_curr_lbl.config(bg=t["content_bg"])
+        self._confirm_btn.config(activebackground="#27ae60", activeforeground="white")
+        self._cancel_btn.config(bg=t["btn_secondary"], fg=t["btn_secondary_fg"],
+                                activebackground=t["btn_secondary"], activeforeground=t["btn_secondary_fg"])
+
+    def on_show(self):
+        self._refresh()
+
+    def on_hide(self):
+        self._stop_camera()
+
+    def _refresh(self):
+        self._search_var.set("")
+        self._search_bar.clear(trigger_command=False)
+        self._load_transfers()
+
+    def _toggle_scanner(self):
+        if self._running:
+            self._stop_camera()
+        else:
+            self._start_camera()
+
+    def _start_camera(self):
+        if self._running:
+            return
+        self._running = True
+        t = get_theme()
+        self._scan_btn.config(text="✖ Stop Scanner", bg="#e74c3c", fg="white", activebackground="#e74c3c", activeforeground="white")
+        self._status.config(text="Point the product QR code at the camera...", fg="#2980b9")
+        self._cam_thread = _CameraThread(_active_camera_index, self._qr_process, process_every=2)
+        self._cam_thread.start()
+        self._render_loop_active = True
+        self._render_loop()
+
+    def _stop_camera(self):
+        self._running = False
+        self._render_loop_active = False
+        if self._cam_thread:
+            self._cam_thread.stop()
+            self._cam_thread = None
+        self._cam_label.config(image="", bg="#1a1a2e")
+        self._cam_label.image = None
+        t = get_theme()
+        self._scan_btn.config(text="📷 Start Camera Scanner", bg=t["btn_primary"], fg=t["btn_primary_fg"], activebackground=t["btn_primary"], activeforeground=t["btn_primary_fg"])
+        self._status.config(text="Scanner stopped. Click 'Start Camera Scanner' to resume.", fg="#555")
+
+    def _qr_process(self, rgb, bgr):
+        h, w = bgr.shape[:2]
+        data, points, _ = self._detector.detectAndDecode(bgr)
+
+        if points is not None:
+            pts = points[0].astype(int)
+            cv2.polylines(bgr, [pts], True, (50, 200, 50), 2)
+            if data:
+                return bgr, data.strip()
+        else:
+            cx, cy = w // 2, h // 2
+            cv2.rectangle(bgr, (cx - w//6, cy - h//6), (cx + w//6, cy + h//6), (150, 150, 150), 1)
+
+        return bgr, None
+
+    def _render_loop(self):
+        if not self._running or not getattr(self, "_render_loop_active", False):
+            return
+        frame = self._cam_thread.latest_display() if self._cam_thread else None
+        if frame is not None:
+            try:
+                photo = _frame_to_photoimage(frame)
+                self._cam_label.config(image=photo)
+                self._cam_label.image = photo
+            except Exception:
+                pass
+
+        result = self._cam_thread.pop_result() if self._cam_thread else None
+        if result:
+            self._stop_camera()
+            self._process_scanned_product(result)
+        else:
+            self.after(30, self._render_loop)
+
+    def _process_scanned_product(self, product_id):
+        product_id = product_id.strip()
+        try:
+            with sqlite3.connect(self._db) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT product_name, stemland FROM formatted_items WHERE product_id = ?",
+                    (product_id,)
+                )
+                row = cursor.fetchone()
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Failed to fetch product details:\n{e}")
+            return
+
+        if not row:
+            messagebox.showerror("Product Not Found", f"No product found with ID: {product_id}")
+            self._start_camera()
+            return
+
+        pname, pstemland = row
+        self._show_transfer_form(product_id, pname, pstemland)
+
+    def _load_transfers(self):
+        for i in self._tree.get_children():
+            self._tree.delete(i)
+        try:
+            with sqlite3.connect(self._db) as conn:
+                rows = conn.execute(
+                    "SELECT transfer_id, product_id, product_name, from_stemland, to_stemland, moved_by, transfer_time FROM stemland_transfers ORDER BY transfer_time DESC"
+                ).fetchall()
+            
+            from datetime import datetime
+            def format_date_str(date_str):
+                if not date_str:
+                    return date_str
+                try:
+                    dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                    return dt.strftime("%d-%m-%Y %I:%M:%S %p")
+                except ValueError:
+                    return date_str
+
+            for r in rows:
+                formatted_row = []
+                for val in r:
+                    if isinstance(val, str) and "-" in val and ":" in val:
+                        formatted_row.append(format_date_str(val))
+                    else:
+                        formatted_row.append(val)
+                self._tree.insert("", "end", values=tuple(formatted_row))
+        except Exception as e:
+            print(f"Error loading transfers: {e}")
+
+    def _do_search(self):
+        term = self._search_bar.get().strip()
+        if not term:
+            self._load_transfers()
+            return
+        for i in self._tree.get_children():
+            self._tree.delete(i)
+        try:
+            with sqlite3.connect(self._db) as conn:
+                rows = conn.execute(
+                    "SELECT transfer_id, product_id, product_name, from_stemland, to_stemland, moved_by, transfer_time FROM stemland_transfers WHERE product_id LIKE ? OR product_name LIKE ? OR from_stemland LIKE ? OR to_stemland LIKE ? OR moved_by LIKE ? ORDER BY transfer_time DESC",
+                    (f"%{term}%",)*5
+                ).fetchall()
+            
+            from datetime import datetime
+            def format_date_str(date_str):
+                if not date_str:
+                    return date_str
+                try:
+                    dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                    return dt.strftime("%d-%m-%Y %I:%M:%S %p")
+                except ValueError:
+                    return date_str
+
+            for r in rows:
+                formatted_row = []
+                for val in r:
+                    if isinstance(val, str) and "-" in val and ":" in val:
+                        formatted_row.append(format_date_str(val))
+                    else:
+                        formatted_row.append(val)
+                self._tree.insert("", "end", values=tuple(formatted_row))
+        except Exception as e:
+            messagebox.showerror("Search error", str(e))
 # ─── Main application ─────────────────────────────────────────────────────────
 
 class InventoryApp(tk.Tk):
@@ -3584,6 +3997,7 @@ class InventoryApp(tk.Tk):
         self.resizable(True, True)
 
         self._logged_in = False
+        self._logged_in_user = None
 
         # ── outer layout ──
         outer = tk.Frame(self)
@@ -3651,6 +4065,7 @@ class InventoryApp(tk.Tk):
         self._add_page("user_management", UserManagementPage(self._content, DB_FILE, bg=bg))
         self._add_page("product_manager", ProductManagerPage(self._content, DB_FILE, bg=bg))
         self._add_page("analytics",       AnalyticsPage(self._content, DB_FILE, bg=bg))
+        self._add_page("transfers",       TransfersPage(self._content, DB_FILE, bg=bg))
 
         self._show_page("home")
 
@@ -3724,7 +4139,7 @@ class InventoryApp(tk.Tk):
         self._pages[name] = page
 
     def _show_page(self, name: str):
-        if name in ("admin_history", "user_management", "product_manager") and not self._logged_in:
+        if name in ("admin_history", "user_management", "product_manager", "analytics", "transfers") and not self._logged_in:
             self._show_page("login")
             return
         if self._current:
@@ -3736,7 +4151,8 @@ class InventoryApp(tk.Tk):
         self._current = page
         self._sidebar.set_active(name)
 
-    def _on_login_success(self):
+    def _on_login_success(self, username="admin"):
         self._logged_in = True
+        self._logged_in_user = username
         self._sidebar.show_admin_menu()
         self._show_page("admin_history")
