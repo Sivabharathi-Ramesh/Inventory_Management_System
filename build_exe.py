@@ -12,7 +12,7 @@ def main():
     print("==================================================")
     print("  Inventory Management System — Executable Builder")
     print("==================================================")
-    
+
     # 1. Verify OS (warn if not Windows)
     if os.name != 'nt':
         print("\n[WARNING] You are running this script on a non-Windows OS.")
@@ -43,7 +43,7 @@ def main():
     print("  [1] Directory Mode (Recommended) — Instant startup, folder with files")
     print("  [2] Single File Mode — Takes 5-15 seconds to start up on every run")
     choice = input("Enter choice [1/2, default: 1]: ").strip()
-    
+
     if choice == '2':
         mode_flag = "--onefile"
         mode_name = "Single File"
@@ -56,17 +56,48 @@ def main():
     # 4. Configure PyInstaller arguments
     # Path separator for --add-data: ';' on Windows, ':' on Unix
     sep = ';' if os.name == 'nt' else ':'
-    
+
     cmd = [
         "pyinstaller",
         "--noconfirm",
         mode_flag,
         "--windowed",  # Hide terminal console when app is running
         "--name=InventoryManagement",
-        "--collect-submodules", "PIL",
+
+        # --- Bundle all third-party packages that PyInstaller misses ---
+        "--collect-all", "PIL",
+        "--collect-all", "cv2",
+        "--collect-all", "numpy",
+        "--collect-all", "qrcode",
+        "--collect-all", "faiss",
+        "--collect-all", "onnxruntime",
+        "--collect-all", "onnx",
+
+        # Hidden imports that PyInstaller's static analysis can miss
+        "--hidden-import", "PIL._tkinter_finder",
+        "--hidden-import", "PIL.Image",
+        "--hidden-import", "PIL.ImageTk",
+        "--hidden-import", "PIL.ImageDraw",
+        "--hidden-import", "PIL.ImageFont",
+        "--hidden-import", "cv2",
+        "--hidden-import", "numpy",
+        "--hidden-import", "qrcode",
+        "--hidden-import", "qrcode.image.pil",
+        "--hidden-import", "faiss",
+        "--hidden-import", "onnxruntime",
+        "--hidden-import", "sqlite3",
+
+        # Bundle data files
         "--add-data", f"icons{sep}icons",
+        "--add-data", f"haarcascade_frontalface_default.xml{sep}.",
+        "--add-data", f"haarcascade_eye.xml{sep}.",
+
         "main.py"
     ]
+
+    # Include face_encodings.pkl if it exists
+    if os.path.exists("face_encodings.pkl"):
+        cmd.extend(["--add-data", f"face_encodings.pkl{sep}."])
 
     print(f"\nRunning command:\n  {' '.join(cmd)}\n")
 
@@ -75,7 +106,7 @@ def main():
         print("\n==================================================")
         print("✓ BUILD SUCCESSFUL!")
         print("==================================================")
-        
+
         # 5. Explain next steps
         dist_path = os.path.abspath(os.path.join("dist", "InventoryManagement"))
         if choice == '2':
@@ -89,7 +120,7 @@ def main():
             print("\n[IMPORTANT] To run the application:")
             print(f"1. Copy your 'DB_FILE' into the folder: {dist_path}")
             print(f"2. Run the 'InventoryManagement.exe' executable inside that folder.")
-            
+
     except subprocess.CalledProcessError as e:
         print(f"\n[ERROR] PyInstaller build failed: {e}")
         sys.exit(1)
