@@ -536,10 +536,25 @@ class Sidebar(tk.Frame):
         self._btns = {}
         self._admin_visible = False
 
-        self._logo  = tk.Label(self, text="STEMLAND", font=("Arial", 13, "bold"))
-        self._logo.pack(pady=(20, 2))
-        self._sub   = tk.Label(self, text="Inventory", font=("Arial", 9))
-        self._sub.pack(pady=(0, 16))
+        # Try to load custom logo image (from icons/logo.png or logo.png)
+        import sys
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        logo_path = os.path.join(base_path, "icons", "logo.png")
+        if not os.path.exists(logo_path):
+            logo_path = "logo.png"
+            
+        self._logo_path_exists = os.path.exists(logo_path)
+        self._logo_img = None
+
+        if self._logo_path_exists:
+            # Create placeholder label for graphical logo, themed later
+            self._logo = tk.Label(self)
+            self._logo.pack(pady=(20, 16))
+        else:
+            self._logo  = tk.Label(self, text="STEMLAND", font=("Arial", 13, "bold"))
+            self._logo.pack(pady=(20, 2))
+            self._sub   = tk.Label(self, text="Inventory", font=("Arial", 9))
+            self._sub.pack(pady=(0, 16))
 
         ttk.Separator(self, orient="horizontal").pack(fill="x", padx=10)
         self._add_btn("🏠  Home", "home")
@@ -576,11 +591,57 @@ class Sidebar(tk.Frame):
         b.pack(fill="x", pady=2)
         self._btns[page] = b
 
+    def _load_themed_logo(self, bg_hex):
+        import sys
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        logo_path = os.path.join(base_path, "icons", "logo.png")
+        if not os.path.exists(logo_path):
+            logo_path = "logo.png"
+        if not os.path.exists(logo_path):
+            return None
+        try:
+            from PIL import Image, ImageTk, ImageColor
+            img = Image.open(logo_path).convert("RGBA")
+            # Resize proportionally to fit sidebar (width 150px)
+            w_percent = (150 / float(img.size[0]))
+            h_size = int((float(img.size[1]) * float(w_percent)))
+            img = img.resize((150, h_size), Image.Resampling.LANCZOS)
+            
+            # Read top-left pixel to get source background color
+            orig_bg = img.getpixel((0, 0))
+            
+            # Target background color matching active theme's sidebar background
+            target_bg = ImageColor.getcolor(bg_hex, "RGBA")
+            
+            # Replace colors close to orig_bg (within Euclidean distance threshold)
+            data = img.getdata()
+            new_data = []
+            for item in data:
+                dist = sum((a - b) ** 2 for a, b in zip(item[:3], orig_bg[:3])) ** 0.5
+                if dist < 45:
+                    new_data.append(target_bg)
+                else:
+                    new_data.append(item)
+            img.putdata(new_data)
+            return ImageTk.PhotoImage(img)
+        except Exception as e:
+            print(f"[Logo Theme Warning] {e}")
+            return None
+
     def apply_theme(self):
         t = get_theme()
         self.config(bg=t["sidebar_bg"])
-        self._logo.config(bg=t["sidebar_bg"], fg=t["logo_fg"])
-        self._sub.config(bg=t["sidebar_bg"], fg=t["logo_sub_fg"])
+        
+        if getattr(self, "_logo_path_exists", False):
+            self._logo_img = self._load_themed_logo(t["sidebar_bg"])
+            
+        if getattr(self, "_logo_img", None) is not None:
+            self._logo.config(image=self._logo_img, bg=t["sidebar_bg"])
+        else:
+            if hasattr(self, "_logo"):
+                self._logo.config(bg=t["sidebar_bg"], fg=t["logo_fg"])
+        if hasattr(self, "_sub"):
+            self._sub.config(bg=t["sidebar_bg"], fg=t["logo_sub_fg"])
         self._admin_label.config(bg=t["sidebar_bg"], fg=t["logo_sub_fg"])
         self._admin_btns_frame.config(bg=t["sidebar_bg"])
         self._logout_btn.config(bg=t["btn_danger"], fg=t["sidebar_fg"],
@@ -992,6 +1053,13 @@ class HomePage(Page):
             locs  = faces_to_locations(faces)
             bgr_annotated, hint, _ = _draw_distance_guide(bgr_blurred, locs, kids_mode=self._kids_mode)
 
+            # Run active blink detection on the current frame using the cached face box
+            if faces:
+                face = faces[0]
+                if not self._blink_detected:
+                    if detect_blink(bgr, face.bbox, self._blink_state):
+                        self._blink_detected = True
+
             if not faces and bounds_violated:
                 hint = "Put your happy face in the oval! 😊" if self._kids_mode else "Center your full face strictly inside the oval"
                 (tw, th), _ = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.70, 2)
@@ -1002,6 +1070,9 @@ class HomePage(Page):
             if result and isinstance(result, tuple) and len(result) == 4:
                 uid, uname, r_hint, conf = result
                 if uid:
+                    if not self._blink_detected:
+                        hint = "👀 Blink your eyes to verify! 👀" if self._kids_mode else "👀 Blink your eyes to verify"
+                    
                     bar_color = (0, 200, 0) if conf >= 70 else \
                                 (0, 165, 255) if conf >= 40 else (0, 0, 220)
                     cv2.rectangle(bgr_annotated, (10, bgr_annotated.shape[0]-40),
@@ -1009,6 +1080,8 @@ class HomePage(Page):
                     cv2.putText(bgr_annotated, f"Match: {conf}%  {uname}",
                                 (10, bgr_annotated.shape[0]-45),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, bar_color, 2)
+                    # Update result tuple with active hint state
+                    result = (uid, uname, hint, conf)
         return bgr_annotated, result
 
     # Votes needed for a confirmed match (higher = harder to spoof)
@@ -4083,6 +4156,48 @@ class InventoryApp(tk.Tk):
         self.title("STEMLAND — Inventory Management")
         self.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}")
         self.resizable(True, True)
+
+        # Set app window icon (using high-quality transparent PNG via iconphoto)
+        import sys
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        icons_dir = os.path.join(base_path, "icons")
+        png_path = os.path.join(icons_dir, "logo.png") if os.path.exists(icons_dir) else "logo.png"
+        if not os.path.exists(png_path):
+            png_path = "logo.png"
+
+        self._icon_img = None
+        if os.path.exists(png_path):
+            try:
+                from PIL import Image, ImageTk
+                img = Image.open(png_path).convert("RGBA")
+                
+                # Make background transparent
+                orig_bg = img.getpixel((0, 0))
+                data = img.getdata()
+                new_data = []
+                for item in data:
+                    dist = sum((a - b) ** 2 for a, b in zip(item[:3], orig_bg[:3])) ** 0.5
+                    if dist < 45:
+                        new_data.append((0, 0, 0, 0))  # Transparent
+                    else:
+                        new_data.append(item)
+                img.putdata(new_data)
+                
+                # Resize to standard icon size (e.g. 64x64) for high-quality display
+                img = img.resize((64, 64), Image.Resampling.LANCZOS)
+                self._icon_img = ImageTk.PhotoImage(img)
+                self.iconphoto(True, self._icon_img)
+            except Exception as e:
+                print(f"[Icon Photo Warning] {e}")
+
+        # Fallback to default admin_icon.ico if self._icon_img is not set
+        if self._icon_img is None:
+            icon_path = os.path.join(icons_dir, "admin_icon.ico") if os.path.exists(icons_dir) else "icons/admin_icon.ico"
+            if os.path.exists(icon_path):
+                try:
+                    self.iconbitmap(icon_path)
+                except Exception as e:
+                    print(f"[Icon Bitmap Warning] {e}")
 
         self._logged_in = False
         self._logged_in_user = None
