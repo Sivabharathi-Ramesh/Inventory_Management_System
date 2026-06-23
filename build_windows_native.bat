@@ -10,10 +10,10 @@ set VERSION=1.0.0
 set RELEASE=release\windows-onedir-%VERSION%
 
 echo.
-echo  =====================================================
-echo   Inventory Management  ^|  Windows Build Pipeline
-echo   Version: %VERSION%
-echo  =====================================================
+echo =====================================================
+echo  Inventory Management ^| Windows Build Pipeline
+echo  Version: %VERSION%
+echo =====================================================
 echo.
 
 :: ── Activate venv if present ────────────────────────────────
@@ -24,18 +24,32 @@ if exist "%~dp0venv\Scripts\activate.bat" (
     echo [WARN] venv not found, using system Python.
 )
 
+:: ── Ensure Python exists ────────────────────────────────────
+where python >nul 2>&1
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Python not found in PATH.
+    pause
+    exit /b 1
+)
+
 :: ── Ensure PyInstaller ──────────────────────────────────────
+echo [INFO] Installing PyInstaller...
+python -m pip install --upgrade pip --quiet
 python -m pip install pyinstaller --quiet
+
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Failed to install PyInstaller.
-    pause & exit /b 1
+    pause
+    exit /b 1
 )
 
 :: ── Prompt build mode ───────────────────────────────────────
-echo  Select build mode:
-echo    [1] Directory (onedir)  — recommended, fast startup
-echo    [2] Single file (onefile)
-set /p CHOICE="  Enter choice [1/2, default 1]: "
+echo.
+echo Select build mode:
+echo   [1] Directory (onedir)  - recommended, fast startup
+echo   [2] Single file (onefile)
+set /p CHOICE="Enter choice [1/2, default 1]: "
+
 if "%CHOICE%"=="2" (
     set MODE_FLAG=--onefile
     set RELEASE=release\windows-onefile-%VERSION%
@@ -43,13 +57,19 @@ if "%CHOICE%"=="2" (
     set MODE_FLAG=--onedir
 )
 
+:: ── Clean previous build ────────────────────────────────────
+if exist build rmdir /s /q build
+if exist dist rmdir /s /q dist
+
 :: ── Run PyInstaller ─────────────────────────────────────────
 echo.
-echo [INFO] Running PyInstaller ...
+echo [INFO] Running PyInstaller...
+
 pyinstaller ^
     --noconfirm ^
     %MODE_FLAG% ^
     --windowed ^
+    --noupx ^
     --name=%APP% ^
     --icon=icons\admin_icon.ico ^
     --collect-all PIL ^
@@ -57,8 +77,9 @@ pyinstaller ^
     --collect-all numpy ^
     --collect-all qrcode ^
     --collect-all faiss ^
-    --collect-all onnxruntime ^
     --collect-all onnx ^
+    --collect-all onnxruntime ^
+    --collect-all insightface ^
     --hidden-import PIL._tkinter_finder ^
     --hidden-import PIL.Image ^
     --hidden-import PIL.ImageTk ^
@@ -69,7 +90,10 @@ pyinstaller ^
     --hidden-import qrcode ^
     --hidden-import qrcode.image.pil ^
     --hidden-import faiss ^
+    --hidden-import faiss_cpu ^
+    --hidden-import onnx ^
     --hidden-import onnxruntime ^
+    --hidden-import insightface ^
     --hidden-import sqlite3 ^
     --add-data "icons;icons" ^
     --add-data "haarcascade_frontalface_default.xml;." ^
@@ -79,37 +103,70 @@ pyinstaller ^
 if %ERRORLEVEL% neq 0 (
     echo.
     echo [ERROR] PyInstaller build failed.
-    pause & exit /b 1
+    pause
+    exit /b 1
 )
 
-:: ── Copy to release folder ───────────────────────────────────
+:: ── Remove unnecessary heavy test folders to prevent Windows MAX_PATH errors ──
+if "%CHOICE%" neq "2" (
+    if exist "dist\%APP%\_internal\onnx\backend\test" (
+        echo [INFO] Removing ONNX backend tests to avoid path length limits ...
+        rmdir /s /q "dist\%APP%\_internal\onnx\backend\test"
+    )
+)
+
+:: ── Create release folder ───────────────────────────────────
 echo.
 echo [INFO] Copying artefacts to %RELEASE% ...
+
+if exist "%RELEASE%" rmdir /s /q "%RELEASE%"
 if not exist "%RELEASE%" mkdir "%RELEASE%"
 
 if "%CHOICE%"=="2" (
     copy /Y "dist\%APP%.exe" "%RELEASE%\%APP%.exe"
 ) else (
-    xcopy /E /I /Y "dist\%APP%" "%RELEASE%\%APP%"
+    powershell -Command "Copy-Item -Path 'dist\%APP%' -Destination '%RELEASE%\%APP%' -Recurse -Force"
 )
 
-:: Copy runtime support files
-for %%F in (DB_FILE face_encodings.pkl haarcascade_frontalface_default.xml haarcascade_eye.xml) do (
-    if exist "%%F" copy /Y "%%F" "%RELEASE%\%%F"
+:: ── Copy runtime files ──────────────────────────────────────
+if "%CHOICE%"=="2" (
+    set TARGET=%RELEASE%
+) else (
+    set TARGET=%RELEASE%\%APP%
 )
 
-:: Write README
-echo Inventory Management System  v%VERSION% > "%RELEASE%\README.txt"
-echo Target: Windows >> "%RELEASE%\README.txt"
-echo. >> "%RELEASE%\README.txt"
-echo HOW TO RUN >> "%RELEASE%\README.txt"
-echo 1. Copy DB_FILE into this folder. >> "%RELEASE%\README.txt"
-echo 2. Double-click %APP%.exe to launch. >> "%RELEASE%\README.txt"
+for %%F in (
+    DB_FILE
+    face_encodings.pkl
+    haarcascade_frontalface_default.xml
+    haarcascade_eye.xml
+) do (
+    if exist "%%F" (
+        copy /Y "%%F" "!TARGET!\"
+    )
+)
+
+:: ── Create README ───────────────────────────────────────────
+(
+echo Inventory Management System v%VERSION%
+echo.
+echo HOW TO RUN
+echo ==========
+echo 1. Ensure DB_FILE is present in this folder.
+echo 2. Double-click %APP%.exe to launch.
+echo.
+echo Build Type:
+if "%CHOICE%"=="2" (
+    echo Single-file executable
+) else (
+    echo One-directory build
+)
+) > "%RELEASE%\README.txt"
 
 echo.
-echo  =====================================================
-echo   BUILD COMPLETE
-echo   Output : %RELEASE%
-echo  =====================================================
+echo =====================================================
+echo BUILD COMPLETE
+echo Output : %RELEASE%
+echo =====================================================
 echo.
 pause

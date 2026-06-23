@@ -68,3 +68,13 @@
 2026-06-23 10:07:28.870748: User Sivabharathi (ID 164) has 1 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
 2026-06-23 10:09:05.937794: User Sivabharathi (ID 164) has 1 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
 2026-06-23 10:14:56.359500: User Meenatchi (ID 104) has 0 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
+2026-06-23 16:18:16.149243: User Sivabharathi (ID 2) has 1 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
+2026-06-23 16:20:26.872374: User Tranai (ID 70) has 0 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
+2026-06-23 16:27:45.848898: User Sivabharathi (ID 2) has 1 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
+2026-06-23 16:32:49.423330: User Sivabharathi (ID 2) has 1 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
+2026-06-23 16:33:36.383997: User Meenatchi (ID 1) has 0 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
+2026-06-23 16:35:54.321319: User Meenatchi (ID 1) has 0 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
+2026-06-23 16:38:38.918654: User Sivabharathi (ID 2) has 1 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
+2026-06-23 16:42:15.126278: User Sivabharathi (ID 2) has 1 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
+2026-06-23 16:42:59.622729: User Tranai (ID 70) has 0 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
+2026-06-23 16:45:05.986369: User Sivabharathi (ID 2) has 1 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).

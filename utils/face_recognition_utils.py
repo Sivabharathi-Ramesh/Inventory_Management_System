@@ -73,8 +73,8 @@ def get_face_embedding(face):
 
 # Cosine similarity threshold for a VALID match (higher = stricter).
 # ArcFace embeddings: same person typically > 0.35, different person < 0.25.
-VERIFY_THRESHOLD = 0.55   # verification (check-in/out) — strict
-ENROLL_THRESHOLD = 0.50   # dedup during registration — slightly looser
+VERIFY_THRESHOLD = 0.45   # verification (check-in/out) — robust under varying lighting
+ENROLL_THRESHOLD = 0.42   # dedup during registration — slightly looser
 
 EMBEDDING_DIM = 512
 
@@ -198,7 +198,7 @@ def find_matching_face(known_encodings, test_encoding, tolerance=VERIFY_THRESHOL
     except Exception:
         return None, None
 
-def check_liveness(bgr_frame, bbox, threshold=80.0):
+def check_liveness(bgr_frame, bbox, threshold=35.0):
     """
     Perform a texture-based liveness check on the cropped face region.
     Returns True if live, False if a suspected spoof (flat screen/printed paper).
@@ -232,3 +232,138 @@ def check_liveness(bgr_frame, bbox, threshold=80.0):
 def recognize_user(timeout=30, db_file='DB_FILE'):
     """Legacy wrapper used by older code paths."""
     return None, None
+
+
+_eye_cascade = None
+_eye_cascade_lock = threading.Lock()
+
+def _get_eye_cascade():
+    global _eye_cascade
+    with _eye_cascade_lock:
+        if _eye_cascade is None:
+            import sys
+            base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            path = os.path.join(base_path, "haarcascade_eye.xml")
+            if not os.path.exists(path):
+                path = "haarcascade_eye.xml"
+            _eye_cascade = cv2.CascadeClassifier(path)
+        return _eye_cascade
+
+
+def detect_blink(bgr_frame, bbox, state_dict):
+    """
+    Detects if the user has blinked using Haar Cascade eye classifier.
+    state_dict is a mutable dictionary to track eye state across frames:
+      - 'blink_stage': int (0: init, 1: open eyes seen, 2: closed eyes seen after open)
+      - 'consecutive_closed_frames': int
+      - 'consecutive_open_frames': int
+      - 'open_eyes': list of dicts {'rect': (ex, ey, ew, eh), 'template': template_img}
+    Returns True if a blink is completed in the current frame, False otherwise.
+    """
+    cascade = _get_eye_cascade()
+    if cascade.empty():
+        return False
+
+    try:
+        x1, y1, x2, y2 = [int(v) for v in bbox]
+        h, w = bgr_frame.shape[:2]
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(w, x2), min(h, y2)
+        
+        face_h = y2 - y1
+        eye_y1 = y1 + int(face_h * 0.15)
+        eye_y2 = y1 + int(face_h * 0.50)
+        
+        eye_roi = bgr_frame[eye_y1:eye_y2, x1:x2]
+        if eye_roi.size == 0:
+            return False
+
+        gray = cv2.cvtColor(eye_roi, cv2.COLOR_BGR2GRAY)
+        gray = cv2.equalizeHist(gray)
+        
+        eyes = cascade.detectMultiScale(gray, scaleFactor=1.15, minNeighbors=3, minSize=(10, 10))
+        
+        if 'blink_stage' not in state_dict:
+            state_dict['blink_stage'] = 0
+            state_dict['consecutive_closed_frames'] = 0
+            state_dict['consecutive_open_frames'] = 0
+            state_dict['open_eyes'] = []
+
+        raw_eyes_detected = len(eyes) >= 1
+        eyes_open = False
+
+        if raw_eyes_detected:
+            eyes_open = True
+            # Update stored templates for open eyes
+            open_eyes = []
+            for (ex, ey, ew, eh) in eyes:
+                template = gray[ey:ey+eh, ex:ex+ew].copy()
+                if template.size > 0:
+                    open_eyes.append({
+                        'rect': (ex, ey, ew, eh),
+                        'template': template
+                    })
+            if open_eyes:
+                state_dict['open_eyes'] = open_eyes
+        else:
+            # Haar classifier did not detect eyes. Check if the last known open eyes still match.
+            has_matching_open_eye = False
+            if 'open_eyes' in state_dict and state_dict['open_eyes']:
+                match_scores = []
+                for eye_data in state_dict['open_eyes']:
+                    ex, ey, ew, eh = eye_data['rect']
+                    template = eye_data['template']
+                    
+                    # Search in a small window around the last known position to allow small movement
+                    pad = 6
+                    sy1 = max(0, ey - pad)
+                    sy2 = min(gray.shape[0], ey + eh + pad)
+                    sx1 = max(0, ex - pad)
+                    sx2 = min(gray.shape[1], ex + ew + pad)
+                    
+                    search_area = gray[sy1:sy2, sx1:sx2]
+                    
+                    # Search area must be larger than the template
+                    if search_area.shape[0] >= template.shape[0] and search_area.shape[1] >= template.shape[1]:
+                        try:
+                            res = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
+                            _, max_val, _, _ = cv2.minMaxLoc(res)
+                            match_scores.append(max_val)
+                        except Exception:
+                            pass
+                
+                # If we found a strong match, override eyes_open to True
+                if match_scores and max(match_scores) >= 0.82:
+                    has_matching_open_eye = True
+            
+            if has_matching_open_eye:
+                eyes_open = True
+            else:
+                eyes_open = False
+
+        if eyes_open:
+            state_dict['consecutive_open_frames'] += 1
+            state_dict['consecutive_closed_frames'] = 0
+            
+            if state_dict['blink_stage'] == 0 and state_dict['consecutive_open_frames'] >= 3:
+                state_dict['blink_stage'] = 1
+            elif state_dict['blink_stage'] == 2 and state_dict['consecutive_open_frames'] >= 1:
+                state_dict['blink_stage'] = 0  # reset
+                state_dict['consecutive_open_frames'] = 0
+                state_dict['consecutive_closed_frames'] = 0
+                state_dict['open_eyes'] = []  # clear templates to start fresh
+                return True
+        else:
+            state_dict['consecutive_closed_frames'] += 1
+            state_dict['consecutive_open_frames'] = 0
+            
+            if state_dict['blink_stage'] == 1 and 1 <= state_dict['consecutive_closed_frames'] <= 4:
+                state_dict['blink_stage'] = 2
+            elif state_dict['consecutive_closed_frames'] > 6:
+                state_dict['blink_stage'] = 0
+                state_dict['open_eyes'] = []  # clear
+
+        return False
+    except Exception as e:
+        print(f"[BLINK DETECTION ERROR] {e}")
+        return False

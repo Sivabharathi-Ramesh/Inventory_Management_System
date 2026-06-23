@@ -17,7 +17,7 @@ import numpy as np
 from PIL import Image, ImageTk
 from utils.face_recognition_utils import (
     detect_faces, faces_to_locations, get_face_embedding,
-    VERIFY_THRESHOLD, ENROLL_THRESHOLD, check_liveness,
+    VERIFY_THRESHOLD, ENROLL_THRESHOLD, detect_blink,
 )
 
 from db import initialize_database, execute_query, fetch_user_data, update_user_type, remove_user, hash_password, is_user_update_required, is_created_at_update_required
@@ -275,13 +275,14 @@ def _draw_distance_guide(bgr, locs, kids_mode=False):
 
     # ── guide oval in centre ──
     cx, cy = w // 2, int(h * 0.45)
-    ow, oh = int(w * 0.18), int(h * 0.40)
+    oh = int(h * 0.40)
+    ow = int(oh * 0.60)
     cv2.ellipse(bgr, (cx, cy), (ow, oh), 0, 0, 360, (200, 200, 200), 2)
 
     if not locs:
         cv2.putText(bgr, "No face detected" if not kids_mode else "Find your face! 😊", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.75, (80, 80, 255), 2)
-        return bgr, "No face detected — align your face with the oval" if not kids_mode else "Put your happy face in the circle! 😊", (80, 80, 255)
+        return bgr, "No face detected — align your face with the oval" if not kids_mode else "Put your happy face in the oval! 😊", (80, 80, 255)
 
     # Use the largest face
     top, right, bottom, left = max(locs, key=lambda l: (l[2]-l[0]) * (l[1]-l[3]))
@@ -659,6 +660,9 @@ class HomePage(Page):
                                           command=self._toggle_kids_mode)
         self._kids_toggle_btn.pack(side="right", padx=4)
 
+        self._blink_detected = False
+        self._blink_state = {}
+
         # ── status ──
         self._status = tk.Label(self, text="Press 'Start Scan' to check a product in or out.",
                                 font=("Arial", 11), fg="#555")
@@ -888,7 +892,8 @@ class HomePage(Page):
         """
         h, w = bgr.shape[:2]
         cx, cy = w // 2, int(h * 0.45)
-        ow, oh = int(w * 0.18), int(h * 0.40)
+        oh = int(h * 0.40)
+        ow = int(oh * 0.60)
 
         if not hasattr(self, "_face_cache"):
             self._face_cache = ([], False, None, bgr.copy())
@@ -923,7 +928,7 @@ class HomePage(Page):
             result = None
 
             if not faces and bounds_violated:
-                hint = "Put your happy face in the circle! 😊" if self._kids_mode else "Center your full face strictly inside the oval"
+                hint = "Put your happy face in the oval! 😊" if self._kids_mode else "Center your full face strictly inside the oval"
                 (tw, th), _ = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.70, 2)
                 cv2.rectangle(bgr_annotated, (8, 8), (tw + 20, 45), (0, 0, 0), -1)
                 cv2.putText(bgr_annotated, hint, (12, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (0, 165, 255), 2)
@@ -936,9 +941,13 @@ class HomePage(Page):
                     if not (_DIST_MIN <= face_h_ratio <= _DIST_MAX):
                         continue
                     
-                    if not check_liveness(bgr, face.bbox):
-                        result = (None, None, "⚠ Use your real face! No photos! 🤖" if self._kids_mode else "⚠ Liveness check failed (Suspected Spoof)", 0)
-                        break
+                    # Run active blink detection for liveness
+                    if not self._blink_detected:
+                        if detect_blink(bgr, face.bbox, self._blink_state):
+                            self._blink_detected = True
+
+                    if not self._blink_detected:
+                        hint = "👀 Blink your eyes to verify! 👀" if self._kids_mode else "👀 Blink your eyes to verify"
 
                     enc   = get_face_embedding(face)
                     known = self._known_cache
@@ -984,7 +993,7 @@ class HomePage(Page):
             bgr_annotated, hint, _ = _draw_distance_guide(bgr_blurred, locs, kids_mode=self._kids_mode)
 
             if not faces and bounds_violated:
-                hint = "Put your happy face in the circle! 😊" if self._kids_mode else "Center your full face strictly inside the oval"
+                hint = "Put your happy face in the oval! 😊" if self._kids_mode else "Center your full face strictly inside the oval"
                 (tw, th), _ = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.70, 2)
                 cv2.rectangle(bgr_annotated, (8, 8), (tw + 20, 45), (0, 0, 0), -1)
                 cv2.putText(bgr_annotated, hint, (12, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (0, 165, 255), 2)
@@ -1012,6 +1021,8 @@ class HomePage(Page):
         self._face_results = []
         self._unknown_face_count = 0
         self._face_start = time.time()
+        self._blink_detected = False
+        self._blink_state = {}
         if self._kids_mode:
             self._status.config(text="😊 Look at the camera and smile! Smile! 🧀", fg="#27ae60", font=("Arial", 12, "bold"))
         else:
@@ -1063,16 +1074,26 @@ class HomePage(Page):
                                                "#e67e22" if "BACK" in hint or "CLOSER" in hint else "#2980b9")
                 if uid:
                     self._unknown_face_count = 0
-                    self._face_results.append((uid, uname))
-                    votes = len(self._face_results)
-                    if self._kids_mode:
-                        self._status.config(
-                            text=f"😊 Hi {uname}! Smile while we check you in... ({votes}/{self._VOTES_NEEDED})",
-                            fg="#27ae60", font=("Arial", 12, "bold"))
+                    if self._blink_detected:
+                        self._face_results.append((uid, uname))
+                        votes = len(self._face_results)
+                        if self._kids_mode:
+                            self._status.config(
+                                text=f"😊 Hi {uname}! Smile while we check you in... ({votes}/{self._VOTES_NEEDED})",
+                                fg="#27ae60", font=("Arial", 12, "bold"))
+                        else:
+                            self._status.config(
+                                text=f"Recognising {uname} — confidence {conf}%  ({votes}/{self._VOTES_NEEDED} votes)",
+                                fg="#27ae60", font=("Arial", 11))
                     else:
-                        self._status.config(
-                            text=f"Recognising {uname} — confidence {conf}%  ({votes}/{self._VOTES_NEEDED} votes)",
-                            fg="#27ae60", font=("Arial", 11))
+                        if self._kids_mode:
+                            self._status.config(
+                                text=f"😊 Hi {uname}! Blink your eyes to verify! 👀",
+                                fg="#e67e22", font=("Arial", 12, "bold"))
+                        else:
+                            self._status.config(
+                                text=f"Hi {uname}! Please blink your eyes to verify. 👀",
+                                fg="#e67e22", font=("Arial", 11))
                 else:
                     # Face in range but no match
                     if hint and ("Perfect" in hint or "cheese" in hint or "Cheese" in hint):
@@ -2168,7 +2189,8 @@ class UserManagementPage(Page):
         """
         h, w = bgr.shape[:2]
         cx, cy = w // 2, int(h * 0.45)
-        ow, oh = int(w * 0.18), int(h * 0.40)
+        oh = int(h * 0.40)
+        ow = int(oh * 0.60)
 
         if not hasattr(self, "_face_cache"):
             self._face_cache = ([], False)
