@@ -64,3 +64,7 @@
 2026-06-22 10:21:50.516899: User Sivabharathi (ID 164) has 53 unreturned items. Attempting to borrow Master Math : Basic Math & Pre Algebra (slof_297).
 2026-06-22 10:21:50.517063: BLOCKED user Sivabharathi (ID 164) from borrowing Master Math : Basic Math & Pre Algebra (slof_297).
 2026-06-22 10:26:05.610798: User Sivabharathi (ID 164) has 0 unreturned items. Attempting to borrow Master Math : Basic Math & Pre Algebra (slof_297).
+2026-06-23 10:06:52.112840: User Sivabharathi (ID 164) has 1 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
+2026-06-23 10:07:28.870748: User Sivabharathi (ID 164) has 1 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
+2026-06-23 10:09:05.937794: User Sivabharathi (ID 164) has 1 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).
+2026-06-23 10:14:56.359500: User Meenatchi (ID 104) has 0 unreturned items. Attempting to borrow Different shapes(mensuration)_1 (slof_279).

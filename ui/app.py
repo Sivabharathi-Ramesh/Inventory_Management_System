@@ -212,8 +212,8 @@ class _CameraThread(threading.Thread):
             cap = _open_camera(self._idx)
             if not cap.isOpened():
                 return
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH,  960)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
             cap.set(cv2.CAP_PROP_FPS, 30)
             # Minimise queued buffers so thread exits cleanly within 1 frame
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -890,77 +890,117 @@ class HomePage(Page):
         cx, cy = w // 2, int(h * 0.45)
         ow, oh = int(w * 0.18), int(h * 0.40)
 
-        faces = detect_faces(bgr)
-        
-        valid_faces = []
-        bounds_violated = False
-        for f in faces:
-            left, top, right, bottom = f.bbox
-            face_cx = (left + right) / 2
-            face_cy = (top + bottom) / 2
-            center_dist = ((face_cx - cx) ** 2 / (ow ** 2)) + ((face_cy - cy) ** 2 / (oh ** 2))
-            
-            # STRICT CHECK: Ensure the ENTIRE bounding box fits inside the oval's rectangular bounds
-            if center_dist <= 0.15 and left >= cx - ow and right <= cx + ow and top >= cy - oh and bottom <= cy + oh:
-                valid_faces.append(f)
-            elif center_dist <= 1.5:
-                bounds_violated = True
-        faces = valid_faces
+        if not hasattr(self, "_face_cache"):
+            self._face_cache = ([], False, None, bgr.copy())
+        if not hasattr(self, "_process_counter"):
+            self._process_counter = 0
 
-        mask = np.zeros((h, w), dtype=np.uint8)
-        cv2.ellipse(mask, (cx, cy), (ow, oh), 0, 0, 360, 255, -1)
-        blurred_bgr = cv2.GaussianBlur(bgr, (51, 51), 0)
-        bgr = np.where(mask[:, :, None] == 255, bgr, blurred_bgr)
-
-        locs  = faces_to_locations(faces)
-        bgr, hint, _ = _draw_distance_guide(bgr, locs, kids_mode=self._kids_mode)
-        result = None
-
-        if not faces and bounds_violated:
-            hint = "Put your happy face in the circle! 😊" if self._kids_mode else "Center your full face strictly inside the oval"
-            (tw, th), _ = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.70, 2)
-            cv2.rectangle(bgr, (8, 8), (tw + 20, 45), (0, 0, 0), -1)
-            cv2.putText(bgr, hint, (12, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (0, 165, 255), 2)
-
-        if faces:
-            h = bgr.shape[0]
-            # Pick the largest face within the valid distance range
-            for face, loc in zip(faces, locs):
-                face_h_ratio = (loc[2] - loc[0]) / h
-                if not (_DIST_MIN <= face_h_ratio <= _DIST_MAX):
-                    continue
+        self._process_counter += 1
+        if self._process_counter % 3 == 1 or self._process_counter == 1:
+            raw_faces = detect_faces(bgr)
+            valid_faces = []
+            bounds_violated = False
+            for f in raw_faces:
+                left, top, right, bottom = f.bbox
+                face_cx = (left + right) / 2
+                face_cy = (top + bottom) / 2
+                center_dist = ((face_cx - cx) ** 2 / (ow ** 2)) + ((face_cy - cy) ** 2 / (oh ** 2))
                 
-                if not check_liveness(bgr, face.bbox):
-                    result = (None, None, "⚠ Use your real face! No photos! 🤖" if self._kids_mode else "⚠ Liveness check failed (Suspected Spoof)", 0)
-                    break
+                # Relaxed center check
+                if center_dist <= 0.4:
+                    valid_faces.append(f)
+                elif center_dist <= 1.5:
+                    bounds_violated = True
+            faces = valid_faces
 
-                enc   = get_face_embedding(face)
-                known = self._known_cache
-                if known:
-                    uid, uname = find_matching_face(known, enc, tolerance=VERIFY_THRESHOLD)
-                    if uid:
-                        # Compute cosine similarity for confidence display
-                        from utils.face_recognition_utils import build_faiss_index, find_matching_face_faiss
-                        embs  = np.array([e[2] for e in known], dtype=np.float32)
-                        norms = np.linalg.norm(embs, axis=1, keepdims=True)
-                        norms[norms == 0] = 1
-                        idx_  = build_faiss_index(embs / norms)
-                        sims, _ = idx_.search(enc.reshape(1, -1), k=1)
-                        sim  = float(sims[0][0])
-                        conf = max(0, min(100, int(sim * 100)))
-                        bar_color = (0, 200, 0) if conf >= 70 else \
-                                    (0, 165, 255) if conf >= 40 else (0, 0, 220)
-                        cv2.rectangle(bgr, (10, bgr.shape[0]-40),
-                                      (10 + conf*3, bgr.shape[0]-20), bar_color, -1)
-                        cv2.putText(bgr, f"Match: {conf}%  {uname}",
-                                    (10, bgr.shape[0]-45),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, bar_color, 2)
-                        result = (uid, uname, hint, conf)
+            mask = np.zeros((h, w), dtype=np.uint8)
+            cv2.ellipse(mask, (cx, cy), (ow, oh), 0, 0, 360, 255, -1)
+            blurred_bgr = cv2.GaussianBlur(bgr, (51, 51), 0)
+            bgr_blurred = np.where(mask[:, :, None] == 255, bgr, blurred_bgr)
+
+            locs  = faces_to_locations(faces)
+            bgr_annotated, hint, _ = _draw_distance_guide(bgr_blurred, locs, kids_mode=self._kids_mode)
+            result = None
+
+            if not faces and bounds_violated:
+                hint = "Put your happy face in the circle! 😊" if self._kids_mode else "Center your full face strictly inside the oval"
+                (tw, th), _ = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.70, 2)
+                cv2.rectangle(bgr_annotated, (8, 8), (tw + 20, 45), (0, 0, 0), -1)
+                cv2.putText(bgr_annotated, hint, (12, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (0, 165, 255), 2)
+
+            if faces:
+                h_img = bgr_annotated.shape[0]
+                # Pick the largest face within the valid distance range
+                for face, loc in zip(faces, locs):
+                    face_h_ratio = (loc[2] - loc[0]) / h_img
+                    if not (_DIST_MIN <= face_h_ratio <= _DIST_MAX):
+                        continue
+                    
+                    if not check_liveness(bgr, face.bbox):
+                        result = (None, None, "⚠ Use your real face! No photos! 🤖" if self._kids_mode else "⚠ Liveness check failed (Suspected Spoof)", 0)
                         break
 
-        if result is None and locs:
-            result = (None, None, hint, 0)
-        return bgr, result
+                    enc   = get_face_embedding(face)
+                    known = self._known_cache
+                    if known:
+                        uid, uname = find_matching_face(known, enc, tolerance=VERIFY_THRESHOLD)
+                        if uid:
+                            # Compute cosine similarity for confidence display
+                            from utils.face_recognition_utils import build_faiss_index, find_matching_face_faiss
+                            embs  = np.array([e[2] for e in known], dtype=np.float32)
+                            norms = np.linalg.norm(embs, axis=1, keepdims=True)
+                            norms[norms == 0] = 1
+                            idx_  = build_faiss_index(embs / norms)
+                            sims, _ = idx_.search(enc.reshape(1, -1), k=1)
+                            sim  = float(sims[0][0])
+                            conf = max(0, min(100, int(sim * 100)))
+                            
+                            bar_color = (0, 200, 0) if conf >= 70 else \
+                                        (0, 165, 255) if conf >= 40 else (0, 0, 220)
+                            cv2.rectangle(bgr_annotated, (10, bgr_annotated.shape[0]-40),
+                                          (10 + conf*3, bgr_annotated.shape[0]-20), bar_color, -1)
+                            cv2.putText(bgr_annotated, f"Match: {conf}%  {uname}",
+                                        (10, bgr_annotated.shape[0]-45),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, bar_color, 2)
+                            result = (uid, uname, hint, conf)
+                            break
+                        else:
+                            result = (None, None, hint, 0)
+                    else:
+                        result = (None, None, hint, 0)
+
+            if result is None and locs:
+                result = (None, None, hint, 0)
+            self._face_cache = (faces, bounds_violated, result, bgr_annotated)
+        else:
+            faces, bounds_violated, result, last_annotated = self._face_cache
+
+            mask = np.zeros((h, w), dtype=np.uint8)
+            cv2.ellipse(mask, (cx, cy), (ow, oh), 0, 0, 360, 255, -1)
+            blurred_bgr = cv2.GaussianBlur(bgr, (51, 51), 0)
+            bgr_blurred = np.where(mask[:, :, None] == 255, bgr, blurred_bgr)
+
+            locs  = faces_to_locations(faces)
+            bgr_annotated, hint, _ = _draw_distance_guide(bgr_blurred, locs, kids_mode=self._kids_mode)
+
+            if not faces and bounds_violated:
+                hint = "Put your happy face in the circle! 😊" if self._kids_mode else "Center your full face strictly inside the oval"
+                (tw, th), _ = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.70, 2)
+                cv2.rectangle(bgr_annotated, (8, 8), (tw + 20, 45), (0, 0, 0), -1)
+                cv2.putText(bgr_annotated, hint, (12, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (0, 165, 255), 2)
+
+            # Re-draw confidence bar and matched name on fresh frame if we had a match
+            if result and isinstance(result, tuple) and len(result) == 4:
+                uid, uname, r_hint, conf = result
+                if uid:
+                    bar_color = (0, 200, 0) if conf >= 70 else \
+                                (0, 165, 255) if conf >= 40 else (0, 0, 220)
+                    cv2.rectangle(bgr_annotated, (10, bgr_annotated.shape[0]-40),
+                                  (10 + conf*3, bgr_annotated.shape[0]-20), bar_color, -1)
+                    cv2.putText(bgr_annotated, f"Match: {conf}%  {uname}",
+                                (10, bgr_annotated.shape[0]-45),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, bar_color, 2)
+        return bgr_annotated, result
 
     # Votes needed for a confirmed match (higher = harder to spoof)
     _VOTES_NEEDED = 6
@@ -980,7 +1020,7 @@ class HomePage(Page):
         self._known_cache = get_known_encodings(db_file=self._db)
         # Swap processing function — camera stays open, no device close/reopen
         if self._cam_thread:
-            self._cam_thread.set_process_fn(self._face_process, process_every=3)
+            self._cam_thread.set_process_fn(self._face_process, process_every=1)
 
     # ── Unified render loop (runs at full display speed ~30 ms) ──
 
@@ -2038,7 +2078,7 @@ class UserManagementPage(Page):
         self._remove_btn.pack(side="left", padx=4)
 
         # Space key to capture
-        self.bind_all("<space>", lambda e: self._capture_sample() if self._running else None)
+        self.bind_all("<space>", self._on_space_key)
         
         # Register search trace after tree is initialized to prevent early trigger error
         self._search_var.trace_add("write", lambda *args: self._refresh_list())
@@ -2130,22 +2170,31 @@ class UserManagementPage(Page):
         cx, cy = w // 2, int(h * 0.45)
         ow, oh = int(w * 0.18), int(h * 0.40)
 
-        faces = detect_faces(bgr)
-        
-        valid_faces = []
-        bounds_violated = False
-        for f in faces:
-            left, top, right, bottom = f.bbox
-            face_cx = (left + right) / 2
-            face_cy = (top + bottom) / 2
-            center_dist = ((face_cx - cx) ** 2 / (ow ** 2)) + ((face_cy - cy) ** 2 / (oh ** 2))
-            
-            # STRICT CHECK: Ensure the ENTIRE bounding box fits inside the oval's rectangular bounds
-            if center_dist <= 0.15 and left >= cx - ow and right <= cx + ow and top >= cy - oh and bottom <= cy + oh:
-                valid_faces.append(f)
-            elif center_dist <= 1.5:
-                bounds_violated = True
-        faces = valid_faces
+        if not hasattr(self, "_face_cache"):
+            self._face_cache = ([], False)
+        if not hasattr(self, "_process_counter"):
+            self._process_counter = 0
+
+        self._process_counter += 1
+        if self._process_counter % 3 == 1 or self._process_counter == 1:
+            raw_faces = detect_faces(bgr)
+            valid_faces = []
+            bounds_violated = False
+            for f in raw_faces:
+                left, top, right, bottom = f.bbox
+                face_cx = (left + right) / 2
+                face_cy = (top + bottom) / 2
+                center_dist = ((face_cx - cx) ** 2 / (ow ** 2)) + ((face_cy - cy) ** 2 / (oh ** 2))
+                
+                # Relaxed center check
+                if center_dist <= 0.4:
+                    valid_faces.append(f)
+                elif center_dist <= 1.5:
+                    bounds_violated = True
+            faces = valid_faces
+            self._face_cache = (faces, bounds_violated)
+        else:
+            faces, bounds_violated = self._face_cache
 
         mask = np.zeros((h, w), dtype=np.uint8)
         cv2.ellipse(mask, (cx, cy), (ow, oh), 0, 0, 360, 255, -1)
@@ -2211,7 +2260,7 @@ class UserManagementPage(Page):
         self._cancel_btn.config(state=tk.NORMAL)
         self._status.config(text="Click 'Capture Sample' (or press Space) when your face is visible.",
                              fg="#2980b9")
-        self._cam_thread = _CameraThread(_active_camera_index, self._face_process, process_every=3)
+        self._cam_thread = _CameraThread(_active_camera_index, self._face_process, process_every=1)
         self._cam_thread.start()
         self._render_loop()
 
@@ -2234,6 +2283,11 @@ class UserManagementPage(Page):
             else:
                 self._status.config(text=hint, fg="#2980b9")
         self.after(30, self._render_loop)
+
+    def _on_space_key(self, event):
+        if self._running:
+            self._capture_sample()
+            return "break"
 
     def _capture_sample(self):
         if not self._running:
@@ -2866,6 +2920,10 @@ class UserManagementPage(Page):
                 err_lbl.config(text=f"Error: {e}")
 
         def _on_update_face_click():
+            try:
+                dlg.grab_release()
+            except Exception:
+                pass
             dlg.withdraw()
             self._updating_user_id = uid
             self._updating_dlg = dlg
@@ -3991,6 +4049,14 @@ class TransfersPage(Page):
 class InventoryApp(tk.Tk):
     def __init__(self):
         super().__init__()
+        # Dynamically scale camera preview size based on screen size
+        global PREVIEW_W, PREVIEW_H
+        screen_h = self.winfo_screenheight()
+        screen_w = self.winfo_screenwidth()
+        if screen_h >= 1000 and screen_w >= 1400:
+            PREVIEW_W, PREVIEW_H = 800, 600   # Larger preview for larger screens
+        else:
+            PREVIEW_W, PREVIEW_H = 640, 480   # Default size
         initialize_database(DB_FILE)
         self.title("STEMLAND — Inventory Management")
         self.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}")
