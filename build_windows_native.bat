@@ -71,7 +71,7 @@ pyinstaller ^
     --windowed ^
     --noupx ^
     --name=%APP% ^
-    --icon=icons\admin_icon.ico ^
+    --icon=icons\logo.ico ^
     --collect-all PIL ^
     --collect-all cv2 ^
     --collect-all numpy ^

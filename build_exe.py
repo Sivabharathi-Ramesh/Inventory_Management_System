@@ -96,6 +96,7 @@ def main():
         mode_flag,
         "--windowed",  # Hide terminal console when app is running
         "--name=InventoryManagement",
+        "--icon=icons/logo.ico",
 
         # --- Local module resolution ---
         "--paths", ".",
